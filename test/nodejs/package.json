@@ -1,0 +1,19 @@
+{
+  "name": "localservices",
+  "version": "1.0.0",
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {
+    "assert": "^2.0.0",
+    "ioredis": "^4.16.3",
+    "mongodb": "^3.5.6",
+    "mysql": "^2.18.1",
+    "pg": "^8.0.3",
+    "tedious": "^8.3.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
