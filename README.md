@@ -1,14 +1,15 @@
 # LocalServicesOnDocker
+### 実行方法
 このフォルダのコンテンツを実行するには、
 
 当該リポジトリをクローンした後、
 ```
-git clone https://github.com/daisukenishino2/EvaluateAspNetCoreOnDocker.git
+git clone https://github.com/NetDevInfraWGinOSSConsortium/LocalServicesOnDocker.git
 ```
 
 このフォルダに移動し、
 ```
->cd ...\EvaluateAspNetCoreOnDocker\LocalServices
+>cd ...\LocalServicesOnDocker
 ```
 
 以下のコマンドでコンテナを起動する。
@@ -21,11 +22,12 @@ git clone https://github.com/daisukenishino2/EvaluateAspNetCoreOnDocker.git
 >docker-compose down
 ```
 
+### テスト方法
 テストを行う場合は、
 
 以下のtestフォルダに移動し、
 ```
->cd ...\LocalServices\test\nodejs
+>cd ...\LocalServicesOnDocker\test\nodejs
 ```
 
 以下のbatファイルを実行する。
@@ -34,6 +36,8 @@ git clone https://github.com/daisukenishino2/EvaluateAspNetCoreOnDocker.git
 >start.bat
 ```
 
+### 接続文字列
+#### .NETの接続文字列
 .NETの接続文字列に関しては、以下の通り。
 
 - RDB
@@ -43,3 +47,15 @@ git clone https://github.com/daisukenishino2/EvaluateAspNetCoreOnDocker.git
 - NoSQL
   - redis : localhost
   - mongodb : mongodb://seigi:seigi%40123@localhost:27017
+
+### コンテナからの接続
+common_linkを設定することでサービス名で接続可能。
+
+### 参考情報
+- OSSコンソーシアム
+  - [サービス類だけ、Docker Compose化するプロジェクトが出来上がった。](https://www.osscons.jp/jor9mt8li-537/)
+  - [プログラム・サービス一式をDocker Compose化した。](https://www.osscons.jp/jo99tfumm-537/)
+ 
+- Wiki
+  - [部会メモ > 6/3 セルフZoom部会 - Open 棟梁 Wiki](https://opentouryo.osscons.jp/index.php?%E9%83%A8%E4%BC%9A%E3%83%A1%E3%83%A2#od49c621)
+  - [Docker for Windowsのネットワーク設定 - マイクロソフト系技術情報 Wiki](https://techinfoofmicrosofttech.osscons.jp/index.php?Docker%20for%20Windows%E3%81%AE%E3%83%8D%E3%83%83%E3%83%88%E3%83%AF%E3%83%BC%E3%82%AF%E8%A8%AD%E5%AE%9A)
