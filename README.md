@@ -12,6 +12,11 @@ git clone https://github.com/NetDevInfraWGinOSSConsortium/LocalServicesOnDocker.
 >cd ...\LocalServicesOnDocker
 ```
 
+初回実行時は、以下のコマンドでnetworkにcommon_linkを作成する。
+```
+docker network create --driver bridge common_link
+```
+
 以下のコマンドでコンテナを起動する。
 ```
 >docker-compose up -d
@@ -57,5 +62,5 @@ common_linkを設定することでサービス名で接続可能。
   - [プログラム・サービス一式をDocker Compose化した。](https://www.osscons.jp/jo99tfumm-537/)
  
 - Wiki
-  - [部会メモ > 6/3 セルフZoom部会 - Open 棟梁 Wiki](https://opentouryo.osscons.jp/index.php?%E9%83%A8%E4%BC%9A%E3%83%A1%E3%83%A2#od49c621)
+  - [部会メモ > 6/3 セルフZoom部会 - Open 棟梁 Wiki](https://opentouryo.osscons.jp/index.php?%E9%83%A8%E4%BC%9A%E3%83%A1%E3%83%A2#qc778622)
   - [Docker for Windowsのネットワーク設定 - マイクロソフト系技術情報 Wiki](https://techinfoofmicrosofttech.osscons.jp/index.php?Docker%20for%20Windows%E3%81%AE%E3%83%8D%E3%83%83%E3%83%88%E3%83%AF%E3%83%BC%E3%82%AF%E8%A8%AD%E5%AE%9A)
