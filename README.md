@@ -2,34 +2,38 @@
 ### 実行方法
 このフォルダのコンテンツを実行するには、
 
-当該リポジトリをクローンした後、
+当該リポジトリをクローンした後（Windows）、
 ```
-git clone https://github.com/NetDevInfraWGinOSSConsortium/LocalServicesOnDocker.git
-```
-
-このフォルダに移動し、
-```
->cd ...\LocalServicesOnDocker
+>git clone https://github.com/NetDevInfraWGinOSSConsortium/LocalServicesOnDocker.git
 ```
 
-初回実行時は、以下のコマンドでnetworkにcommon_linkを作成する。
+このフォルダに移動し（WSL2）、
 ```
-docker network create --driver bridge common_link
-```
-
-以下のコマンドでコンテナを起動する。
-```
->docker-compose up -d
+$ cd /mnt/.../LocalServicesOnDocker/
 ```
 
-以下のコマンドでコンテナが停止する。
+初回実行時は、以下のコマンドでnetworkにcommon_linkを作成する（WSL2）。
 ```
->docker-compose down
+$docker network create --driver bridge common_link
+```
+
+以下のコマンドでコンテナを起動する（WSL2）。
+```
+$ docker compose up -d
+```
+
+以下のコマンドでコンテナが停止する（WSL2）。
+```
+$ docker compose down
 ```
 
 ### テスト方法
-テストを行う場合は、
+テストを行う場合は、Windows上から、
 
+#### dotnet
+ConsoleApp1.sln プロジェクトを実行する。
+
+#### nodejs
 以下のtestフォルダに移動し、
 ```
 >cd ...\LocalServicesOnDocker\test\nodejs

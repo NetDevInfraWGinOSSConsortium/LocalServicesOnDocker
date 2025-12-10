@@ -1,10 +1,8 @@
--- Change authentication plugins for root.
-ALTER USER 'root' IDENTIFIED WITH mysql_native_password BY 'seigi@123';
-FLUSH PRIVILEGES;
-
--- Create table and insert data.
+-- Create database if not exists
+CREATE DATABASE IF NOT EXISTS test;
 USE test;
 
+-- Create table and insert data.
 DROP TABLE IF EXISTS Shippers;
 
 CREATE TABLE Shippers (

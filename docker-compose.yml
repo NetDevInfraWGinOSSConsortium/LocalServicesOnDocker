@@ -1,10 +1,8 @@
-version: '3.4'
-
 services:
   redis:
     image: redis
     restart: always
-    command: redis-server --appendonly yes
+    command: redis-server /usr/local/etc/redis/redis.conf --appendonly yes
     ports:
       - 6379:6379
     volumes:
@@ -31,7 +29,7 @@ services:
   mysql:
     image: mysql
     restart: always
-    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    command: mysqld --socket=/run/mysqld/mysqld.sock --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
       MYSQL_ROOT_PASSWORD: seigi@123
       MYSQL_DATABASE: test
@@ -41,6 +39,8 @@ services:
     volumes:
       #- ./mysql/data:/var/lib/mysql
       - ./mysql/init:/docker-entrypoint-initdb.d
+    tmpfs:
+      - /run/mysqld
     networks:
       - common_link
 
@@ -59,9 +59,9 @@ services:
       - common_link
 
   sqlserver:
-    image: microsoft/mssql-server-linux:latest
+    image: mcr.microsoft.com/mssql/server:2022-latest
     restart: always
-    command: "sh -c '/init/start-up.sh & /opt/mssql/bin/sqlservr;'"
+    #command: "sh -c '/init/start-up.sh & /opt/mssql/bin/sqlservr;'"
     environment:
       - ACCEPT_EULA=Y
       - MSSQL_SA_PASSWORD=seigi@123
@@ -72,7 +72,9 @@ services:
       - 1433:1433
     volumes:
       #- ./sqlserver/mssql-db:/var/opt/mssql
-      - ./sqlserver/init:/init
+      #- ./sqlserver/init:/init
+      - ./sqlserver/init:/docker-entrypoint-initdb.d
+
     networks:
       - common_link
 
