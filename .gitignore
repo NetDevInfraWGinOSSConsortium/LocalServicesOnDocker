@@ -116,3 +116,8 @@ sqlserver/mssql-db/
 .venv/
 __pycache__/
 *.py[cod]
+
+# --- .NET ---
+# ビルド成果物は追跡しない（.csproj は追跡対象）。
+[Bb]in/
+[Oo]bj/
