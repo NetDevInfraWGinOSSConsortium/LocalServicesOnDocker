@@ -61,7 +61,13 @@ services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     restart: always
-    #command: "sh -c '/init/start-up.sh & /opt/mssql/bin/sqlservr;'"
+    # 本来の起動処理(launch_sqlservr.sh → sqlservr)を exec でそのまま実行しつつ、
+    # 背後で start-up.sh を走らせて Northwind DB を自動作成する。
+    # exec により sqlservr が PID1 となり、停止時に SIGTERM を受けて正常終了できる。
+    entrypoint:
+      - /bin/bash
+      - -c
+      - "bash /init/start-up.sh & exec /opt/mssql/bin/launch_sqlservr.sh /opt/mssql/bin/sqlservr"
     environment:
       - ACCEPT_EULA=Y
       - MSSQL_SA_PASSWORD=seigi@123
@@ -72,8 +78,7 @@ services:
       - 1433:1433
     volumes:
       #- ./sqlserver/mssql-db:/var/opt/mssql
-      #- ./sqlserver/init:/init
-      - ./sqlserver/init:/docker-entrypoint-initdb.d
+      - ./sqlserver/init:/init
 
     networks:
       - common_link

@@ -102,3 +102,11 @@ dist
 
 # TernJS port file
 .tern-port
+
+# --- LocalServicesOnDocker: コンテナが実行時に生成するデータ ---
+# これらは docker のボリューム経由で作られるランタイムデータのため追跡しない。
+# （sqlserver/init/instnwnd.sql や *.conf などの初期化・設定ファイルは追跡対象。）
+redis/data/
+mysql/data/
+postgres/data/
+sqlserver/mssql-db/

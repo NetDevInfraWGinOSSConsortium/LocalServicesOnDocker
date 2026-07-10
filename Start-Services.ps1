@@ -7,26 +7,34 @@
     Windows の PowerShell から WSL2 経由で実行する。
     Docker は WSL2 内にインストールされている前提。
 
+    この環境では次の 2 点が問題になるため、スクリプト側で対処している。
+      ① WSL2 の VM がアイドルで自動停止し、DB(MySQL/SQL Server) の書き込みが
+         中断されてデータが破損する（→ クラッシュループ）。
+      ② VM が停止すると Windows の localhost からコンテナの公開ポートへ到達できない。
+    どちらも根本原因は「VM のアイドル停止」なので、WSL 内に常駐プロセス
+    （キープアライブ）を立てて VM を起動したままにすることで両方を防ぐ。
+    加えて各 DB が接続可能になるまで待機し、破損等で準備できないコンテナは
+    自動で作り直す（本 compose は永続ボリューム未使用のため作り直しは無害）。
+
 .PARAMETER Action
-    up    : common_link を（無ければ）作成し、docker compose up -d でコンテナを起動する（既定）。
-    down  : docker compose down でコンテナを停止する。
+    up    : common_link を作成し起動、各 DB の準備完了まで待機する（既定）。
+    down  : docker compose down で停止し、キープアライブも解除する。
     ps    : コンテナの稼働状況を表示する。
     logs  : コンテナのログを表示する（Ctrl+C で終了）。
 
 .PARAMETER Distro
-    使用する WSL ディストリビューション名。省略時は WSL の既定ディストリビューションを使用する。
+    使用する WSL ディストリビューション名。省略時は既定のディストリビューションを使用する。
+
+.PARAMETER NoWait
+    up 時に DB の準備完了待ちを行わない。
 
 .EXAMPLE
     .\Start-Services.ps1
-    コンテナを起動する。
+    コンテナを起動し、全 DB が接続可能になるまで待つ。
 
 .EXAMPLE
     .\Start-Services.ps1 down
     コンテナを停止する。
-
-.EXAMPLE
-    .\Start-Services.ps1 up -Distro Ubuntu-22.04
-    ディストリビューションを指定して起動する。
 #>
 [CmdletBinding()]
 param(
@@ -34,15 +42,44 @@ param(
     [ValidateSet('up', 'down', 'ps', 'logs')]
     [string]$Action = 'up',
 
-    [string]$Distro
+    [string]$Distro,
+
+    [switch]$NoWait
 )
 
 $ErrorActionPreference = 'Stop'
 $NetworkName = 'common_link'
+# キープアライブ: Windows 側に常駐する wsl.exe が sleep を保持する。
+# 特徴的な秒数（約68年）を識別子に使う。
+$KeepAliveSleep = '2147483647'
+# pgrep -f 用パターン。先頭文字を [x] で囲むことで pgrep 自身の
+# コマンドライン（パターン文字列を含む）への自己マッチを防ぐ。
+$KeepAlivePat = '[2]147483647'
+
+# 公開ポート（Windows 側の到達確認用）。
+$ServicePorts = [ordered]@{
+    redis     = 6379
+    mongo     = 27017
+    mysql     = 3306
+    postgres  = 5432
+    sqlserver = 1433
+}
+
+# 各サービスの「準備完了」判定コマンド（docker compose exec -T <svc> で実行）。
+$ReadyChecks = [ordered]@{
+    redis     = @('redis-cli', 'ping')
+    mongo     = @('mongosh', '--quiet', '--eval', 'db.adminCommand("ping").ok')
+    mysql     = @('mysqladmin', 'ping', '-h', '127.0.0.1', '-uroot', '-pseigi@123', '--silent')
+    postgres  = @('pg_isready', '-h', '127.0.0.1', '-U', 'postgres')
+    # bash -lc に複雑な文字列を渡すと wsl.exe 経由で引用符が壊れるため、
+    # sqlcmd を直接・トークン配列で呼ぶ（各要素が個別の引数として渡る）。
+    # -d Northwind とすることで、Northwind DB が自動作成されるまで準備完了と
+    # みなさない（存在しない DB へは接続できずエラーになる）。引用符も不要。
+    sqlserver = @('/opt/mssql-tools18/bin/sqlcmd', '-S', 'localhost', '-U', 'SA',
+        '-P', 'seigi@123', '-C', '-d', 'Northwind', '-Q', 'SELECT 1')
+}
 
 # --- WSL 実行ヘルパ ---------------------------------------------------------
-# 指定ディストリビューションと、このスクリプトのあるフォルダを作業ディレクトリにして
-# WSL 内でコマンドを実行する。
 $wslBaseArgs = @()
 if ($Distro) {
     $wslBaseArgs += @('-d', $Distro)
@@ -59,25 +96,131 @@ $rest = $Matches[2] -replace '\\', '/'
 $wslPath = "/mnt/$drive/$rest"
 
 function Invoke-Wsl {
+    # 出力をコンソールへ流し、終了コードを $script:LastWslExit に退避する。
     param([Parameter(Mandatory)][string[]]$CommandArgs)
-    # --cd で compose ファイルのあるフォルダに移動してから実行する。
-    # Docker の出力はそのままコンソールへ流し、終了コードはスクリプト変数に退避する
-    # （return 値をパイプラインに乗せると表示出力に混ざるため）。
     & wsl @wslBaseArgs --cd $wslPath @CommandArgs
     $script:LastWslExit = $LASTEXITCODE
 }
 
-# --- Docker の存在確認 ------------------------------------------------------
-& wsl @wslBaseArgs docker version --format '{{.Server.Version}}' > $null 2>&1
-if ($LASTEXITCODE -ne 0) {
+function Invoke-WslQuiet {
+    # 出力を捨てて終了コードだけ返す（判定用）。
+    param([Parameter(Mandatory)][string[]]$CommandArgs)
+    & wsl @wslBaseArgs --cd $wslPath @CommandArgs 2>&1 | Out-Null
+    return $LASTEXITCODE
+}
+
+# --- キープアライブ（VM のアイドル停止を防ぐ）------------------------------
+function Start-KeepAlive {
+    # Windows 側に常駐する wsl.exe プロセス（sleep）を 1 つ起動する。
+    #  ・VM のアイドル停止を防ぐ（問題①）。
+    #  ・Windows↔WSL の localhost 転送は「Windows 側に生きた wsl セッションがある間」
+    #    だけ維持される。VM 内の sleep だけでは不十分なので、Windows 側で wsl.exe を
+    #    保持する（問題②）。
+    # 注: Start-Process にスペースを含む単一引数を渡すとクォートされず壊れるため、
+    #     引数はすべてスペースなしのトークンにする（-e sleep <秒> 方式）。
+    & wsl @wslBaseArgs bash -c "pgrep -f '$KeepAlivePat' >/dev/null 2>&1"
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "キープアライブは既に稼働中。" -ForegroundColor DarkGray
+        return
+    }
+    $kaArgs = @()
+    if ($Distro) { $kaArgs += @('-d', $Distro) }
+    $kaArgs += @('-e', 'sleep', $KeepAliveSleep)
+    Start-Process -FilePath 'wsl' -ArgumentList $kaArgs -WindowStyle Hidden | Out-Null
+    Start-Sleep -Milliseconds 1500
+    & wsl @wslBaseArgs bash -c "pgrep -f '$KeepAlivePat' >/dev/null 2>&1"
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "キープアライブ稼働中（VM とlocalhost転送を維持）。" -ForegroundColor DarkGray
+    }
+    else {
+        Write-Host "警告: キープアライブの起動を確認できませんでした。" -ForegroundColor Yellow
+    }
+}
+
+function Stop-KeepAlive {
+    # 常駐 sleep を止めると、それを保持していた wsl.exe セッションも終了する。
+    & wsl @wslBaseArgs bash -c "pkill -f '$KeepAliveSleep'" 2>&1 | Out-Null
+}
+
+# --- Docker デーモンの準備待ち（コールドブート直後対応）---------------------
+function Wait-DockerDaemon {
+    for ($i = 0; $i -lt 30; $i++) {
+        & wsl @wslBaseArgs docker version --format '{{.Server.Version}}' > $null 2>&1
+        if ($LASTEXITCODE -eq 0) { return }
+        Start-Sleep -Seconds 2
+    }
     throw "WSL2 上で Docker に接続できません。WSL 内で Docker(デーモン) が起動しているか確認してください。"
 }
 
+# --- サービス準備完了待ち＋自動復旧 ----------------------------------------
+function Wait-Service {
+    param(
+        [Parameter(Mandatory)][string]$Service,
+        [Parameter(Mandatory)][string[]]$Check,
+        [int]$TimeoutSec = 150
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        $code = Invoke-WslQuiet (@('docker', 'compose', 'exec', '-T', $Service) + $Check)
+        if ($code -eq 0) { return $true }
+        Start-Sleep -Seconds 3
+    }
+    return $false
+}
+
+function Ensure-Service {
+    # 準備完了を待ち、駄目なら 1 度だけ作り直して再度待つ。
+    param(
+        [Parameter(Mandatory)][string]$Service,
+        [Parameter(Mandatory)][string[]]$Check
+    )
+    Write-Host ("  - {0,-10} 準備待ち..." -f $Service) -NoNewline
+    if (Wait-Service -Service $Service -Check $Check) {
+        Write-Host " OK" -ForegroundColor Green
+        return $true
+    }
+    Write-Host " 応答なし → 作り直し" -ForegroundColor Yellow
+    # 破損データを完全に破棄するため、コンテナと匿名ボリュームを削除してから作り直す。
+    # 公式 mysql/mssql イメージは data ディレクトリを匿名ボリュームに持つため、
+    # --force-recreate では破損データが再利用されてしまう。rm -sfv で匿名ボリュームごと
+    # 削除し、up で作り直すとイメージから正しく初期化される。
+    Invoke-WslQuiet @('docker', 'compose', 'rm', '-sfv', $Service) | Out-Null
+    Invoke-WslQuiet @('docker', 'compose', 'up', '-d', $Service) | Out-Null
+    Write-Host ("  - {0,-10} 再準備待ち..." -f $Service) -NoNewline
+    if (Wait-Service -Service $Service -Check $Check) {
+        Write-Host " OK" -ForegroundColor Green
+        return $true
+    }
+    Write-Host " NG" -ForegroundColor Red
+    return $false
+}
+
+# --- Windows 側からの到達確認 ----------------------------------------------
+function Test-WindowsPort {
+    param([int]$Port, [int]$TimeoutMs = 1500)
+    $client = New-Object System.Net.Sockets.TcpClient
+    try {
+        $iar = $client.BeginConnect('127.0.0.1', $Port, $null, $null)
+        if ($iar.AsyncWaitHandle.WaitOne($TimeoutMs) -and $client.Connected) {
+            $client.EndConnect($iar)
+            return $true
+        }
+        return $false
+    }
+    catch { return $false }
+    finally { $client.Close() }
+}
+
+# ===========================================================================
 Write-Host "対象: $scriptDir" -ForegroundColor DarkGray
 Write-Host "WSL パス: $wslPath" -ForegroundColor DarkGray
 
 switch ($Action) {
     'up' {
+        # ①②対策: まず VM を起こしっぱなしにする。
+        Start-KeepAlive
+        Wait-DockerDaemon
+
         # common_link ネットワークが無ければ作成する（初回対応・冪等）。
         & wsl @wslBaseArgs docker network inspect $NetworkName > $null 2>&1
         if ($LASTEXITCODE -ne 0) {
@@ -93,6 +236,42 @@ switch ($Action) {
         Invoke-Wsl @('docker', 'compose', 'up', '-d')
         if ($script:LastWslExit -ne 0) { throw "docker compose up に失敗しました。" }
 
+        if (-not $NoWait) {
+            Write-Host "`n各 DB の準備完了を待機します（初回や破損時は作り直します）:" -ForegroundColor Cyan
+            $failed = @()
+            foreach ($svc in $ReadyChecks.Keys) {
+                if (-not (Ensure-Service -Service $svc -Check $ReadyChecks[$svc])) {
+                    $failed += $svc
+                }
+            }
+
+            # Windows 側からの到達確認（問題②の検証）。
+            Write-Host "`nWindows(localhost) からの到達確認:" -ForegroundColor Cyan
+            $unreachable = @()
+            foreach ($svc in $ServicePorts.Keys) {
+                $port = $ServicePorts[$svc]
+                if (Test-WindowsPort -Port $port) {
+                    Write-Host ("  - {0,-10} localhost:{1} 到達 OK" -f $svc, $port) -ForegroundColor Green
+                }
+                else {
+                    Write-Host ("  - {0,-10} localhost:{1} 到達 NG" -f $svc, $port) -ForegroundColor Red
+                    $unreachable += $svc
+                }
+            }
+
+            if ($unreachable.Count -gt 0) {
+                $ip = (& wsl @wslBaseArgs hostname -I).Trim().Split(' ')[0]
+                Write-Host "`n警告: Windows の localhost から到達できないサービスがあります。" -ForegroundColor Yellow
+                Write-Host "      WSL2 の localhost 転送が無効な可能性があります。" -ForegroundColor Yellow
+                Write-Host ("      回避策: 接続先ホストに WSL2 の IP [{0}] を指定してください。" -f $ip) -ForegroundColor Yellow
+                Write-Host ("      例: > `$env:DB_HOST='{0}'; npm test" -f $ip) -ForegroundColor Yellow
+            }
+
+            if ($failed.Count -gt 0) {
+                throw ("次のサービスが準備完了になりませんでした: {0}" -f ($failed -join ', '))
+            }
+        }
+
         Write-Host "`n起動しました。稼働状況:" -ForegroundColor Green
         Invoke-Wsl @('docker', 'compose', 'ps')
     }
@@ -100,7 +279,8 @@ switch ($Action) {
         Write-Host "コンテナを停止します (docker compose down)..." -ForegroundColor Cyan
         Invoke-Wsl @('docker', 'compose', 'down')
         if ($script:LastWslExit -ne 0) { throw "docker compose down に失敗しました。" }
-        Write-Host "停止しました。" -ForegroundColor Green
+        Stop-KeepAlive
+        Write-Host "停止しました（キープアライブも解除）。" -ForegroundColor Green
     }
     'ps' {
         Invoke-Wsl @('docker', 'compose', 'ps')

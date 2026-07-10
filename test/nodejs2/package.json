@@ -1,0 +1,27 @@
+{
+  "name": "localservices-test2",
+  "version": "2.0.0",
+  "description": "LocalServicesOnDocker 各サービスの疎通テスト（アップグレード版）",
+  "private": true,
+  "directories": {
+    "test": "."
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ioredis": "^5.4.1",
+    "mongodb": "^6.8.0",
+    "mssql": "^11.0.1",
+    "mysql2": "^3.11.0",
+    "pg": "^8.12.0"
+  },
+  "scripts": {
+    "test": "node test-all.js",
+    "test:redis": "node TestRedis.js",
+    "test:mongo": "node TestMongo.js",
+    "test:mysql": "node TestMySQL.js",
+    "test:postgres": "node TestPostgres.js",
+    "test:sqlserver": "node TestSQLServer.js"
+  }
+}
