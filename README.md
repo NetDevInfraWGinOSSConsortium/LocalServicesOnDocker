@@ -1,4 +1,5 @@
 # LocalServicesOnDocker
+
 ### 実行方法
 このフォルダのコンテンツを実行するには、
 
@@ -12,6 +13,7 @@
 $ cd /mnt/.../LocalServicesOnDocker/
 ```
 
+#### WSLから実行する
 初回実行時は、以下のコマンドでnetworkにcommon_linkを作成する（WSL2）。
 ```
 $docker network create --driver bridge common_link
@@ -25,6 +27,42 @@ $ docker compose up -d
 以下のコマンドでコンテナが停止する（WSL2）。
 ```
 $ docker compose down
+```
+
+#### Start-Services.ps1から実行する
+Windows の PowerShell から `Start-Services.ps1` を実行することで、WSL2 上の Docker を経由して起動・停止できる。  
+（common_link ネットワークの作成、compose ファイルのあるフォルダへの移動は自動で行われる。）
+
+リポジトリのフォルダに移動し（Windows / PowerShell）、
+```
+> cd ...\LocalServicesOnDocker\
+```
+
+以下のコマンドでコンテナを起動する。初回実行時の common_link ネットワーク作成も自動で行われる。
+```
+> .\Start-Services.ps1
+> .\Start-Services.ps1 up
+```
+
+以下のコマンドでコンテナが停止する。
+```
+> .\Start-Services.ps1 down
+```
+
+その他、稼働状況の確認やログ表示も可能。
+```
+> .\Start-Services.ps1 ps
+> .\Start-Services.ps1 logs
+```
+
+使用する WSL ディストリビューションを指定する場合は `-Distro` を付与する（省略時は既定のディストリビューション）。
+```
+> .\Start-Services.ps1 up -Distro Ubuntu-22.04
+```
+
+PowerShell の実行ポリシーでブロックされる場合は、以下のように実行する。
+```
+> powershell -ExecutionPolicy Bypass -File .\Start-Services.ps1
 ```
 
 ### テスト方法
