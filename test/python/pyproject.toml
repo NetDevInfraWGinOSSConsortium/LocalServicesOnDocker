@@ -1,0 +1,17 @@
+[project]
+name = "localservices-test-python"
+version = "1.0.0"
+description = "LocalServicesOnDocker 各サービスの疎通テスト（Python 版）"
+requires-python = ">=3.9"
+dependencies = [
+    "redis>=5.0",
+    "pymongo>=4.6",
+    "PyMySQL>=1.1",
+    "psycopg2-binary>=2.9",
+    "pymssql>=2.2",
+]
+
+# このプロジェクト自体はパッケージ（配布物）ではなくスクリプト集なので、
+# uv がプロジェクト本体をビルド／インストールしようとしないようにする。
+[tool.uv]
+package = false
