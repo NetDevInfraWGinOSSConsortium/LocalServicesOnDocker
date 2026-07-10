@@ -2,7 +2,11 @@
 # SQL Server の起動後に Northwind データベースを自動作成する。
 # 公式の instnwnd.sql は「DB を作成しない（対象 DB 内で実行する）」スクリプトのため、
 # ここで CREATE DATABASE Northwind を行ってから -d Northwind で流し込む。
-# コンテナ再起動時に既に Northwind があればスキップする（冪等）。
+#
+# 起動直後のロードは一部のバッチが失敗して不完全になることがある（テーブルだけ出来て
+# データが入らない等）。そこで「Shippers が 3 行あるか」で完全ロードを検証し、
+# 不完全なら DB を作り直して再試行する。完了後にセンチネル表を作り、
+# Start-Services.ps1 側がそれを見て「データ準備完了」を判定できるようにする。
 set -u
 
 PASS="${MSSQL_SA_PASSWORD:-${SA_PASSWORD:-}}"
@@ -20,23 +24,40 @@ fi
 CFLAG=""
 case "$SQLCMD" in *tools18*) CFLAG="-C" ;; esac
 
-run() { "$SQLCMD" -S localhost -U SA -P "$PASS" $CFLAG "$@"; }
+q() { "$SQLCMD" -S localhost -U SA -P "$PASS" $CFLAG "$@"; }
 
 echo "[init] waiting for SQL Server to accept logins..."
 for i in $(seq 1 90); do
-  run -Q "SELECT 1" >/dev/null 2>&1 && break
+  q -Q "SELECT 1" >/dev/null 2>&1 && break
   sleep 2
 done
 
-if run -h -1 -W -Q "SET NOCOUNT ON; SELECT CASE WHEN DB_ID('Northwind') IS NULL THEN 'MISSING' ELSE 'EXISTS' END" 2>/dev/null | grep -q EXISTS; then
-  echo "[init] Northwind already exists; skip."
+# Shippers が 3 行あれば完全ロード済みとみなす。
+loaded() {
+  local n
+  n=$(q -d Northwind -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.Shippers" 2>/dev/null | tr -d '[:space:]')
+  [ "$n" = "3" ]
+}
+
+if loaded; then
+  echo "[init] Northwind already fully loaded; skip."
+  q -d Northwind -Q "IF OBJECT_ID('dbo.__NorthwindReady') IS NULL CREATE TABLE dbo.__NorthwindReady(ok bit)" >/dev/null 2>&1
   exit 0
 fi
 
-echo "[init] creating database Northwind..."
-run -Q "IF DB_ID('Northwind') IS NULL CREATE DATABASE Northwind"
+for attempt in 1 2 3 4 5; do
+  echo "[init] loading Northwind (attempt ${attempt})..."
+  # 不完全な既存 DB を確実に破棄してから作り直す。
+  q -Q "IF DB_ID('Northwind') IS NOT NULL BEGIN ALTER DATABASE Northwind SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE Northwind; END; CREATE DATABASE Northwind;" >/dev/null 2>&1
+  q -d Northwind -i /init/instnwnd.sql >/dev/null 2>&1
+  if loaded; then
+    q -d Northwind -Q "IF OBJECT_ID('dbo.__NorthwindReady') IS NULL CREATE TABLE dbo.__NorthwindReady(ok bit)" >/dev/null 2>&1
+    echo "[init] Northwind loaded successfully (attempt ${attempt})."
+    exit 0
+  fi
+  echo "[init] load incomplete; retrying..."
+  sleep 3
+done
 
-echo "[init] loading instnwnd.sql into Northwind..."
-run -d Northwind -i /init/instnwnd.sql
-
-echo "[init] Northwind initialization done."
+echo "[init] WARNING: Northwind load did not complete after retries."
+exit 0

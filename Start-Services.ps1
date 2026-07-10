@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     LocalServicesOnDocker のコンテナ群を WSL2 上の Docker で起動・停止する。
 
@@ -68,15 +68,44 @@ $ServicePorts = [ordered]@{
 # 各サービスの「準備完了」判定コマンド（docker compose exec -T <svc> で実行）。
 $ReadyChecks = [ordered]@{
     redis     = @('redis-cli', 'ping')
-    mongo     = @('mongosh', '--quiet', '--eval', 'db.adminCommand("ping").ok')
+    # mongosh は --eval 実行前にサーバへ接続するため、括弧・引用符を含まない
+    # 単純な式 '1' で十分（接続失敗時は非ゼロ終了）。特殊文字を避けることで
+    # Windows PowerShell 5.1 の引数渡しでも壊れない。
+    mongo     = @('mongosh', '--quiet', '--eval', '1')
     mysql     = @('mysqladmin', 'ping', '-h', '127.0.0.1', '-uroot', '-pseigi@123', '--silent')
     postgres  = @('pg_isready', '-h', '127.0.0.1', '-U', 'postgres')
     # bash -lc に複雑な文字列を渡すと wsl.exe 経由で引用符が壊れるため、
     # sqlcmd を直接・トークン配列で呼ぶ（各要素が個別の引数として渡る）。
-    # -d Northwind とすることで、Northwind DB が自動作成されるまで準備完了と
-    # みなさない（存在しない DB へは接続できずエラーになる）。引用符も不要。
+    # start-up.sh は Northwind を完全ロードした後にセンチネル表 __NorthwindReady を作る。
+    # -b を付けて、その表がまだ無い（＝データ未ロード）間はエラー＝未準備とみなす。
+    # クエリは空白のみで特殊文字を含まないため PowerShell 5.1 でも壊れない。
     sqlserver = @('/opt/mssql-tools18/bin/sqlcmd', '-S', 'localhost', '-U', 'SA',
-        '-P', 'seigi@123', '-C', '-d', 'Northwind', '-Q', 'SELECT 1')
+        '-P', 'seigi@123', '-C', '-b', '-d', 'Northwind', '-Q', 'SELECT ok FROM __NorthwindReady')
+}
+
+# --- 出力ヘルパ -------------------------------------------------------------
+# wsl.exe を実行すると、以降 PowerShell の改行が行頭復帰(CR)を伴わなくなり、
+# 出力が階段状にずれることがある（特に Windows Terminal + Windows PowerShell 5.1）。
+# そこで Write-Host は使わず、[Console]::Out へ明示的に CR+LF を書き込むことで、
+# ターミナルの状態に依存せず必ず行頭へ戻す。色は [Console]::ForegroundColor で付ける。
+function Write-Line {
+    param(
+        [Parameter(Position = 0)][string]$Text = '',
+        [System.ConsoleColor]$Color,
+        [switch]$NoNewline
+    )
+    $hasColor = $PSBoundParameters.ContainsKey('Color')
+    if ($hasColor) {
+        $prevColor = [Console]::ForegroundColor
+        [Console]::ForegroundColor = $Color
+    }
+    try {
+        if ($NoNewline) { [Console]::Out.Write($Text) }
+        else { [Console]::Out.Write($Text + "`r`n") }
+    }
+    finally {
+        if ($hasColor) { [Console]::ForegroundColor = $prevColor }
+    }
 }
 
 # --- WSL 実行ヘルパ ---------------------------------------------------------
@@ -104,8 +133,18 @@ function Invoke-Wsl {
 
 function Invoke-WslQuiet {
     # 出力を捨てて終了コードだけ返す（判定用）。
+    # native コマンドが stderr に出力すると、$ErrorActionPreference='Stop' の
+    # Windows PowerShell 5.1 では終了エラー扱いになるため、一時的に Continue にし、
+    # 全ストリームを *> $null で破棄する（例: mysqladmin の警告で停止しないように）。
     param([Parameter(Mandatory)][string[]]$CommandArgs)
-    & wsl @wslBaseArgs --cd $wslPath @CommandArgs 2>&1 | Out-Null
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & wsl @wslBaseArgs --cd $wslPath @CommandArgs *> $null
+    }
+    finally {
+        $ErrorActionPreference = $prev
+    }
     return $LASTEXITCODE
 }
 
@@ -120,7 +159,7 @@ function Start-KeepAlive {
     #     引数はすべてスペースなしのトークンにする（-e sleep <秒> 方式）。
     & wsl @wslBaseArgs bash -c "pgrep -f '$KeepAlivePat' >/dev/null 2>&1"
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "キープアライブは既に稼働中。" -ForegroundColor DarkGray
+        Write-Line "キープアライブは既に稼働中。" -Color DarkGray
         return
     }
     $kaArgs = @()
@@ -130,16 +169,19 @@ function Start-KeepAlive {
     Start-Sleep -Milliseconds 1500
     & wsl @wslBaseArgs bash -c "pgrep -f '$KeepAlivePat' >/dev/null 2>&1"
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "キープアライブ稼働中（VM とlocalhost転送を維持）。" -ForegroundColor DarkGray
+        Write-Line "キープアライブ稼働中（VM とlocalhost転送を維持）。" -Color DarkGray
     }
     else {
-        Write-Host "警告: キープアライブの起動を確認できませんでした。" -ForegroundColor Yellow
+        Write-Line "警告: キープアライブの起動を確認できませんでした。" -Color Yellow
     }
 }
 
 function Stop-KeepAlive {
     # 常駐 sleep を止めると、それを保持していた wsl.exe セッションも終了する。
-    & wsl @wslBaseArgs bash -c "pkill -f '$KeepAliveSleep'" 2>&1 | Out-Null
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & wsl @wslBaseArgs bash -c "pkill -f '$KeepAliveSleep'" *> $null }
+    finally { $ErrorActionPreference = $prev }
 }
 
 # --- Docker デーモンの準備待ち（コールドブート直後対応）---------------------
@@ -174,24 +216,24 @@ function Ensure-Service {
         [Parameter(Mandatory)][string]$Service,
         [Parameter(Mandatory)][string[]]$Check
     )
-    Write-Host ("  - {0,-10} 準備待ち..." -f $Service) -NoNewline
+    Write-Line ("  - {0,-10} 準備待ち..." -f $Service) -NoNewline
     if (Wait-Service -Service $Service -Check $Check) {
-        Write-Host " OK" -ForegroundColor Green
+        Write-Line " OK" -Color Green
         return $true
     }
-    Write-Host " 応答なし → 作り直し" -ForegroundColor Yellow
+    Write-Line " 応答なし → 作り直し" -Color Yellow
     # 破損データを完全に破棄するため、コンテナと匿名ボリュームを削除してから作り直す。
     # 公式 mysql/mssql イメージは data ディレクトリを匿名ボリュームに持つため、
     # --force-recreate では破損データが再利用されてしまう。rm -sfv で匿名ボリュームごと
     # 削除し、up で作り直すとイメージから正しく初期化される。
     Invoke-WslQuiet @('docker', 'compose', 'rm', '-sfv', $Service) | Out-Null
     Invoke-WslQuiet @('docker', 'compose', 'up', '-d', $Service) | Out-Null
-    Write-Host ("  - {0,-10} 再準備待ち..." -f $Service) -NoNewline
+    Write-Line ("  - {0,-10} 再準備待ち..." -f $Service) -NoNewline
     if (Wait-Service -Service $Service -Check $Check) {
-        Write-Host " OK" -ForegroundColor Green
+        Write-Line " OK" -Color Green
         return $true
     }
-    Write-Host " NG" -ForegroundColor Red
+    Write-Line " NG" -Color Red
     return $false
 }
 
@@ -212,8 +254,8 @@ function Test-WindowsPort {
 }
 
 # ===========================================================================
-Write-Host "対象: $scriptDir" -ForegroundColor DarkGray
-Write-Host "WSL パス: $wslPath" -ForegroundColor DarkGray
+Write-Line "対象: $scriptDir" -Color DarkGray
+Write-Line "WSL パス: $wslPath" -Color DarkGray
 
 switch ($Action) {
     'up' {
@@ -224,20 +266,21 @@ switch ($Action) {
         # common_link ネットワークが無ければ作成する（初回対応・冪等）。
         & wsl @wslBaseArgs docker network inspect $NetworkName > $null 2>&1
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "ネットワーク '$NetworkName' を作成します..." -ForegroundColor Cyan
+            Write-Line "ネットワーク '$NetworkName' を作成します..." -Color Cyan
             Invoke-Wsl @('docker', 'network', 'create', '--driver', 'bridge', $NetworkName)
             if ($script:LastWslExit -ne 0) { throw "ネットワーク '$NetworkName' の作成に失敗しました。" }
         }
         else {
-            Write-Host "ネットワーク '$NetworkName' は既に存在します。" -ForegroundColor DarkGray
+            Write-Line "ネットワーク '$NetworkName' は既に存在します。" -Color DarkGray
         }
 
-        Write-Host "コンテナを起動します (docker compose up -d)..." -ForegroundColor Cyan
+        Write-Line "コンテナを起動します (docker compose up -d)..." -Color Cyan
         Invoke-Wsl @('docker', 'compose', 'up', '-d')
         if ($script:LastWslExit -ne 0) { throw "docker compose up に失敗しました。" }
 
         if (-not $NoWait) {
-            Write-Host "`n各 DB の準備完了を待機します（初回や破損時は作り直します）:" -ForegroundColor Cyan
+            Write-Line ""
+            Write-Line "各 DB の準備完了を待機します（初回や破損時は作り直します）:" -Color Cyan
             $failed = @()
             foreach ($svc in $ReadyChecks.Keys) {
                 if (-not (Ensure-Service -Service $svc -Check $ReadyChecks[$svc])) {
@@ -246,25 +289,27 @@ switch ($Action) {
             }
 
             # Windows 側からの到達確認（問題②の検証）。
-            Write-Host "`nWindows(localhost) からの到達確認:" -ForegroundColor Cyan
+            Write-Line ""
+            Write-Line "Windows(localhost) からの到達確認:" -Color Cyan
             $unreachable = @()
             foreach ($svc in $ServicePorts.Keys) {
                 $port = $ServicePorts[$svc]
                 if (Test-WindowsPort -Port $port) {
-                    Write-Host ("  - {0,-10} localhost:{1} 到達 OK" -f $svc, $port) -ForegroundColor Green
+                    Write-Line ("  - {0,-10} localhost:{1} 到達 OK" -f $svc, $port) -Color Green
                 }
                 else {
-                    Write-Host ("  - {0,-10} localhost:{1} 到達 NG" -f $svc, $port) -ForegroundColor Red
+                    Write-Line ("  - {0,-10} localhost:{1} 到達 NG" -f $svc, $port) -Color Red
                     $unreachable += $svc
                 }
             }
 
             if ($unreachable.Count -gt 0) {
                 $ip = (& wsl @wslBaseArgs hostname -I).Trim().Split(' ')[0]
-                Write-Host "`n警告: Windows の localhost から到達できないサービスがあります。" -ForegroundColor Yellow
-                Write-Host "      WSL2 の localhost 転送が無効な可能性があります。" -ForegroundColor Yellow
-                Write-Host ("      回避策: 接続先ホストに WSL2 の IP [{0}] を指定してください。" -f $ip) -ForegroundColor Yellow
-                Write-Host ("      例: > `$env:DB_HOST='{0}'; npm test" -f $ip) -ForegroundColor Yellow
+                Write-Line ""
+                Write-Line "警告: Windows の localhost から到達できないサービスがあります。" -Color Yellow
+                Write-Line "      WSL2 の localhost 転送が無効な可能性があります。" -Color Yellow
+                Write-Line ("      回避策: 接続先ホストに WSL2 の IP [{0}] を指定してください。" -f $ip) -Color Yellow
+                Write-Line ("      例: > `$env:DB_HOST='{0}'; npm test" -f $ip) -Color Yellow
             }
 
             if ($failed.Count -gt 0) {
@@ -272,15 +317,16 @@ switch ($Action) {
             }
         }
 
-        Write-Host "`n起動しました。稼働状況:" -ForegroundColor Green
+        Write-Line ""
+        Write-Line "起動しました。稼働状況:" -Color Green
         Invoke-Wsl @('docker', 'compose', 'ps')
     }
     'down' {
-        Write-Host "コンテナを停止します (docker compose down)..." -ForegroundColor Cyan
+        Write-Line "コンテナを停止します (docker compose down)..." -Color Cyan
         Invoke-Wsl @('docker', 'compose', 'down')
         if ($script:LastWslExit -ne 0) { throw "docker compose down に失敗しました。" }
         Stop-KeepAlive
-        Write-Host "停止しました（キープアライブも解除）。" -ForegroundColor Green
+        Write-Line "停止しました（キープアライブも解除）。" -Color Green
     }
     'ps' {
         Invoke-Wsl @('docker', 'compose', 'ps')
