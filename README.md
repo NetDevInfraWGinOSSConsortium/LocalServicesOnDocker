@@ -76,9 +76,10 @@ Windows の PowerShell から `Start-Services.ps1` を実行することで、WS
 > .\Start-Services.ps1 up
 ```
 
-以下のコマンドでコンテナが停止する。
+以下のコマンドでコンテナが停止する。`Stop-Services.ps1`（`Start-Services.ps1 down` のショートカット）でも同じ。
 ```
 > .\Start-Services.ps1 down
+> .\Stop-Services.ps1
 ```
 
 その他、稼働状況の確認やログ表示も可能。
@@ -88,8 +89,15 @@ Windows の PowerShell から `Start-Services.ps1` を実行することで、WS
 ```
 
 使用する WSL ディストリビューションを指定する場合は `-Distro` を付与する（省略時は既定のディストリビューション）。
+`Stop-Services.ps1` も `-Distro` を受け取り、`Start-Services.ps1` に転送する。
 ```
 > .\Start-Services.ps1 up -Distro Ubuntu-22.04
+> .\Stop-Services.ps1 -Distro Ubuntu-22.04
+```
+
+ダブルクリック起動時にウィンドウが即閉じせず出力・エラーを読めるよう、処理の最後にキー入力待ち（`Start-Services.bat` の `pause` 相当）を行う。成功・失敗どちらでも待つ。キー入力待ちを行いたくない場合は `-NoPause` を付与する（`Stop-Services.ps1` からの呼び出しやパイプなど、入力がリダイレクトされている非対話実行では、指定しなくても自動的に待たない）。
+```
+> .\Start-Services.ps1 up -NoPause
 ```
 
 PowerShell の実行ポリシーでブロックされる場合は、以下のように実行する。

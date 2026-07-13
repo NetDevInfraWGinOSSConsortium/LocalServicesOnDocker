@@ -28,6 +28,10 @@
 .PARAMETER NoWait
     up 時に DB の準備完了待ちを行わない。
 
+.PARAMETER NoPause
+    完了時のキー入力待ち（Start-Services.bat の pause 相当）を行わない。
+    入力がリダイレクトされている非対話実行では、指定しなくても自動的に待たない。
+
 .EXAMPLE
     .\Start-Services.ps1
     コンテナを起動し、全 DB が接続可能になるまで待つ。
@@ -44,7 +48,9 @@ param(
 
     [string]$Distro,
 
-    [switch]$NoWait
+    [switch]$NoWait,
+
+    [switch]$NoPause
 )
 
 $ErrorActionPreference = 'Stop'
@@ -253,7 +259,23 @@ function Test-WindowsPort {
     finally { $client.Close() }
 }
 
+# --- pause（Start-Services.bat の pause 相当）-------------------------------
+function Wait-ForKey {
+    # ダブルクリック起動時にウィンドウが即閉じせず、出力やエラーを読めるよう、
+    # 最後にキー入力を待つ。ただし入力がリダイレクトされている非対話実行
+    # （Stop-Services.ps1 からの呼び出し・パイプ・CI など）では待たずに抜ける
+    # （キー入力を受け取れずハングするのを防ぐ）。-NoPause でも抑止できる。
+    if ($NoPause) { return }
+    try { if ([Console]::IsInputRedirected) { return } } catch { return }
+    Write-Line ""
+    Write-Line "続行するには何かキーを押してください . . ." -NoNewline
+    try { [void][Console]::ReadKey($true) }
+    catch { try { $null = Read-Host } catch { } }
+    Write-Line ""
+}
+
 # ===========================================================================
+try {
 Write-Line "対象: $scriptDir" -Color DarkGray
 Write-Line "WSL パス: $wslPath" -Color DarkGray
 
@@ -334,4 +356,8 @@ switch ($Action) {
     'logs' {
         Invoke-Wsl @('docker', 'compose', 'logs', '-f')
     }
+}
+}
+finally {
+    Wait-ForKey
 }
