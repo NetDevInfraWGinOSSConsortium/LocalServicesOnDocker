@@ -29,6 +29,38 @@ $ docker compose up -d
 $ docker compose down
 ```
 
+#### Start-Services.bat から実行する（Rancher Desktop 導入時）
+Rancher Desktop を導入すると `docker` コマンドが Windows ネイティブで使えるため、
+WSLからの実行（common_link 作成 → `docker compose up -d` / `down`）だけを実行する。
+
+以下のコマンド（またはダブルクリック）でコンテナを起動する。引数なしは `up`。
+初回の common_link ネットワーク作成も自動で行われる。
+```
+> .\Start-Services.bat
+> .\Start-Services.bat up
+```
+
+以下のコマンドでコンテナが停止する。`Stop-Services.bat`（`down` のショートカット）でも同じ。
+```
+> .\Start-Services.bat down
+> .\Stop-Services.bat
+```
+
+その他、稼働状況の確認やログ表示も可能。
+```
+> .\Start-Services.bat ps
+> .\Start-Services.bat logs
+```
+
+補足:
+- 前提として Rancher Desktop が起動していること。`docker` の実体は Rancher Desktop の bin
+  （`C:\Program Files\Rancher Desktop\resources\resources\win32\bin`）がマシン PATH に登録済みで、
+  新しく開いた端末では `docker` が利用できる。
+- bat 内のメッセージ・コメントは ASCII（英語）のみとしている。日本語（マルチバイト）を含めると、
+  コンソールが `chcp 65001`（UTF-8）のとき cmd.exe がバッチのパースに失敗するため。
+- `Start-Services.ps1` のような DB 準備完了待ちは行わない（起動のみ）。SQL Server の Northwind など
+  初期データのロードには起動後さらに数十秒かかるため、DB 接続テストは少し待ってから開始すると安定する。
+
 #### Start-Services.ps1から実行する
 Windows の PowerShell から `Start-Services.ps1` を実行することで、WSL2 上の Docker を経由して起動・停止できる。  
 （common_link ネットワークの作成、compose ファイルのあるフォルダへの移動は自動で行われる。）
@@ -97,8 +129,28 @@ SQL Server の公式イメージは、他の DB のように初期化スクリ�
 
 `docker compose up`（WSL から直接実行）でも同様に自動作成される。
 
+#### bat と ps1 は、それぞれ別インスタンスを起動
+`Start-Services.bat` と `Start-Services.ps1` は、それぞれ **別の Docker デーモン** 上でコンテナを起動する。
+
+| | Start-Services.bat | Start-Services.ps1 |
+|---|---|---|
+| Docker エンジン | Rancher Desktop | WSL2 の既定ディストロ内の dockerd |
+| 接続先 | `npipe:////./pipe/docker_engine` | `unix:///var/run/docker.sock`（ディストロ内） |
+
+compose ファイルもプロジェクト名（`localservicesondocker`）もコンテナ名も同じだが、
+デーモンが異なるため **中身は別々のコンテナ・別々のデータ** になる。運用上の注意は次のとおり。
+
+- **データは共有されない。** 一方で書き込んだデータは他方からは見えない。
+- **同時には起動できない。** 両者とも同じ Windows の localhost ポート
+  （6379 / 27017 / 3306 / 5432 / 1433）を公開するため、後から起動した方がポート競合で失敗する。
+  どちらか一方だけを使うこと。
+- **停止は対応するツールで行う。** Rancher 側（bat 起動）は `Stop-Services.bat` /
+  `Start-Services.bat down`、WSL 側（ps1 起動）は `Start-Services.ps1 down` で停止する。
+  相互のコンテナは見えないため、`Stop-Services.bat` では ps1 のコンテナは停止しない（逆も同様）。
+
 ### テスト方法
-テストを行う場合は、Windows上から、
+テストを行う場合は、あらかじめ `Start-Services.bat`（Rancher Desktop）または
+`Start-Services.ps1`（WSL2）でサービスを起動しておく（両者は排他。同時起動不可）。Windows上から、
 
 #### dotnet
 ConsoleApp1.sln プロジェクトを実行する。
@@ -107,6 +159,18 @@ ConsoleApp1.sln プロジェクトを実行する。
 以下のtestフォルダに移動し、
 ```
 >cd ...\LocalServicesOnDocker\test\nodejs
+```
+
+以下のbatファイルを実行する。
+```
+>install.bat
+>start.bat
+```
+
+#### python
+以下のtestフォルダに移動し、
+```
+>cd ...\LocalServicesOnDocker\test\python
 ```
 
 以下のbatファイルを実行する。
