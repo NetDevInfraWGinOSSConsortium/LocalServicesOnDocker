@@ -29,4 +29,4 @@ $ErrorActionPreference = 'Stop'
 $forward = @{}
 if ($PSBoundParameters.ContainsKey('Distro')) { $forward['Distro'] = $Distro }
 
-& "$PSScriptRoot\Start-Services.ps1" down @forward
+& "$PSScriptRoot\Start-Services_wsl2.ps1" down @forward

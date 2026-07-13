@@ -8,12 +8,13 @@
 >git clone https://github.com/NetDevInfraWGinOSSConsortium/LocalServicesOnDocker.git
 ```
 
-このフォルダに移動し（WSL2）、
+#### WSL2から実行する
+クローンしたフォルダに移動（WSL2）、
+
 ```
 $ cd /mnt/.../LocalServicesOnDocker/
 ```
 
-#### WSLから実行する
 初回実行時は、以下のコマンドでnetworkにcommon_linkを作成する（WSL2）。
 ```
 $docker network create --driver bridge common_link
@@ -29,9 +30,11 @@ $ docker compose up -d
 $ docker compose down
 ```
 
-#### Start-Services.bat から実行する（Rancher Desktop 導入時）
-Rancher Desktop を導入すると `docker` コマンドが Windows ネイティブで使えるため、
-WSLからの実行（common_link 作成 → `docker compose up -d` / `down`）だけを実行する。
+#### Start-Services.bat から実行する
+（Rancher Desktop 導入時）
+
+Rancher Desktop を導入すると `docker` コマンドが Windows 上から使えるため、
+common_link 作成 → `docker compose up -d` / `down`だけを実行する。
 
 以下のコマンド（またはダブルクリック）でコンテナを起動する。引数なしは `up`。
 初回の common_link ネットワーク作成も自動で行われる。
@@ -61,16 +64,19 @@ WSLからの実行（common_link 作成 → `docker compose up -d` / `down`）�
 - `Start-Services.ps1` のような DB 準備完了待ちは行わない（起動のみ）。SQL Server の Northwind など
   初期データのロードには起動後さらに数十秒かかるため、DB 接続テストは少し待ってから開始すると安定する。
 
-#### Start-Services.ps1から実行する
-Windows の PowerShell から `Start-Services.ps1` を実行することで、WSL2 上の Docker を経由して起動・停止できる。  
-（common_link ネットワークの作成、compose ファイルのあるフォルダへの移動は自動で行われる。）
+#### Start-Services.ps1 から実行する
+（Rancher Desktop導入時 ＋ DB 初期化完了待ちをする場合）
+
+`Start-Services.bat` と同じく Rancher Desktop の docker を用いるが、加えて
+**各 DB が接続可能になるまで待機**してから起動完了とする。テスト前に DB が実際に使える状態を保証したい場合に使う。
 
 リポジトリのフォルダに移動し（Windows / PowerShell）、
 ```
 > cd ...\LocalServicesOnDocker\
 ```
 
-以下のコマンドでコンテナを起動する。初回実行時の common_link ネットワーク作成も自動で行われる。
+以下のコマンド（またはダブルクリック）でコンテナを起動する。引数なしは `up`。
+初回実行時の common_link ネットワーク作成も自動で行われる。
 ```
 > .\Start-Services.ps1
 > .\Start-Services.ps1 up
@@ -88,15 +94,14 @@ Windows の PowerShell から `Start-Services.ps1` を実行することで、WS
 > .\Start-Services.ps1 logs
 ```
 
-使用する WSL ディストリビューションを指定する場合は `-Distro` を付与する（省略時は既定のディストリビューション）。
-`Stop-Services.ps1` も `-Distro` を受け取り、`Start-Services.ps1` に転送する。
+主なオプション:
+- `-NoWait` : DB の初期化完了待ちを省略して起動のみ行う。
+- `-NoPause`: 完了時のキー入力待ち（`Start-Services.bat` の `pause` 相当）を行わない。
+  ダブルクリック起動でウィンドウが即閉じせず出力・エラーを読めるよう、既定では成功・失敗どちらでも待つ。
+  ただし入力がリダイレクトされている非対話実行（`Stop-Services.ps1` からの呼び出し・パイプ・CI 等）では、
+  指定しなくても自動的に待たない。
 ```
-> .\Start-Services.ps1 up -Distro Ubuntu-22.04
-> .\Stop-Services.ps1 -Distro Ubuntu-22.04
-```
-
-ダブルクリック起動時にウィンドウが即閉じせず出力・エラーを読めるよう、処理の最後にキー入力待ち（`Start-Services.bat` の `pause` 相当）を行う。成功・失敗どちらでも待つ。キー入力待ちを行いたくない場合は `-NoPause` を付与する（`Stop-Services.ps1` からの呼び出しやパイプなど、入力がリダイレクトされている非対話実行では、指定しなくても自動的に待たない）。
-```
+> .\Start-Services.ps1 up -NoWait
 > .\Start-Services.ps1 up -NoPause
 ```
 
@@ -105,60 +110,76 @@ PowerShell の実行ポリシーでブロックされる場合は、以下のよ
 > powershell -ExecutionPolicy Bypass -File .\Start-Services.ps1
 ```
 
-##### Start-Services.ps1 の堅牢化について
-WSL2 内の Docker を Windows から使う際に起きがちな次の 2 点を、スクリプト側で自動的に対処している。
+#### Start-Services_wsl2.ps1
+（WSL2 内の Docker で実行 + DB 初期化完了待ちをする場合）
 
-- **① VM のアイドル停止によるデータ破損の防止**  
-  WSL2 の VM はアイドルになると自動停止し、その際に DB(MySQL / SQL Server) の書き込みが
-  中断されてデータが破損する（＝クラッシュループ）。`up` 時に Windows 側で常駐する
-  `wsl.exe` プロセス（キープアライブ）を 1 つ起動して VM を起動したままに保ち、これを防ぐ。
-  さらに各 DB が接続可能になるまで待機し、破損等で準備できないコンテナは自動で作り直す
-  （本 compose は永続ボリューム未使用のため作り直しは無害）。
-- **② Windows の localhost からコンテナへ到達できない問題の解消**  
-  Windows↔WSL の localhost 転送は「Windows 側に生きた `wsl` セッションがある間」だけ
-  維持される。上記キープアライブ（Windows 側常駐 `wsl.exe`）がこのセッションを保持し続けるため、
-  Windows 上のアプリから `localhost:<port>` でコンテナに接続できるようになる。
-  `up` の最後に各ポートへの到達確認結果が表示される。
+Rancher Desktop 導入以前の、**WSL2 内にインストールした Docker** を対象とする版。
+基本的な使い方は `Start-Services.ps1` と同じ（`up` / `down` / `ps` / `logs`、`-NoWait` / `-NoPause`）で、
+加えて WSL ディストリビューションを `-Distro` で指定できる。
+```
+> .\Start-Services_wsl2.ps1
+> .\Start-Services_wsl2.ps1 up -Distro Ubuntu-22.04
+> .\Stop-Services_wsl2.ps1
+```
 
-キープアライブは `down` を実行すると自動的に解除される。  
-（グローバル設定 `.wslconfig` は変更しない。すべて本スクリプト内で完結する。）
+WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行っている。
 
-##### SQL Server の Northwind DB 自動作成
+- **VM のアイドル停止によるデータ破損の防止**  
+  WSL2 の VM はアイドルで自動停止し、その際に DB(MySQL / SQL Server) の書き込みが中断されて
+  データが破損する（＝クラッシュループ）。`up` 時に Windows 側で常駐する `wsl.exe` プロセス
+  （キープアライブ）を起動して VM を起動したままに保ち、これを防ぐ。`down` で自動解除される。
+- **localhost 到達の維持**  
+  Windows↔WSL の localhost 転送は「Windows 側に生きた `wsl` セッションがある間」だけ維持される。
+  上記キープアライブがこのセッションを保持するため、Windows から `localhost:<port>` で接続できる。
+
+#### スクリプトの使い分け
+| スクリプト | Docker エンジン | DB 初期化完了待ち | 主なオプション |
+|---|---|---|---|
+| `Start-Services.bat` / `Stop-Services.bat` | Rancher Desktop | しない | — |
+| `Start-Services.ps1` / `Stop-Services.ps1` | Rancher Desktop | する（`-NoWait` で省略可） | `-NoWait` `-NoPause` |
+| `Start-Services_wsl2.ps1` / `Stop-Services_wsl2.ps1` | WSL2 内の dockerd | する | `-Distro` `-NoWait` `-NoPause` |
+
+- 手早く起動したい・ダブルクリックで済ませたい → `Start-Services.bat`
+- テスト前に DB が使える状態まで待ってから始めたい → `Start-Services.ps1`
+- Rancher Desktop 未導入で WSL2 内の Docker を使う → `Start-Services_wsl2.ps1`
+
+> 注: Rancher Desktop版の `.bat` と `.ps1` は、**同一の Rancher エンジン・同一コンテナ**を扱うため、一方で起動して
+> 他方で停止しても問題ない。一方 WSL2 版の `_wsl2.ps1` は WSL2 内の別デーモン上で動く**別インスタンス**であり、
+> 公開ポート（6379 / 27017 / 3306 / 5432 / 1433）が同じなので、Rancher Desktop版と同時に起動するとポート競合する。
+> 用途に応じてどちらか一方だけを使うこと。
+
+### 重複する仕様
+
+#### SQL Server の Northwind DB 自動作成
+（SQL Serverコンテナ自体に実装されているため、`docker compose up` 直接実行時も自動作成される）
+
 SQL Server の公式イメージは、他の DB のように初期化スクリプトを自動実行しないため、
 `sqlserver/init/start-up.sh` を entrypoint から起動して Northwind DB を自動作成する。
 
-- DDL は Microsoft 公式の
-  [instnwnd.sql](https://github.com/microsoft/sql-server-samples/blob/master/samples/databases/northwind-pubs/instnwnd.sql)
-  を `sqlserver/init/instnwnd.sql` として配置している。
-- このスクリプトは DB を作成しない仕様のため、`start-up.sh` が先に `CREATE DATABASE Northwind`
-  を行ってから `-d Northwind` で流し込む。
+- DDL は Microsoft 公式のスクリプトを `sqlserver/init/instnwnd.sql` として配置。
+  https://github.com/microsoft/sql-server-samples/blob/master/samples/databases/northwind-pubs/instnwnd.sql
+- このスクリプトは DB を作成しない仕様のため、`start-up.sh` が先に
+  `CREATE DATABASE Northwind` を行ってから `-d Northwind` で流し込む。
 - SQL Server 起動後に自動実行され、既に Northwind があればスキップする（冪等）。
-- `Start-Services.ps1` は、この Northwind DB が利用可能になるまで待ってから起動完了とする。
+- PowerShell版は、この Northwind DB が利用可能になるまで待ってから起動完了とする。
 
-`docker compose up`（WSL から直接実行）でも同様に自動作成される。
+#### DB 初期化完了待ち
+（PowerShell版に追加されている実装）
 
-#### bat と ps1 は、それぞれ別インスタンスを起動
-`Start-Services.bat` と `Start-Services.ps1` は、それぞれ **別の Docker デーモン** 上でコンテナを起動する。
+`up` 時、各 DB が実際に接続可能になるまで待機してから起動完了とする。
+判定はコンテナ内で `docker compose exec` 経由の疎通確認で行う。
 
-| | Start-Services.bat | Start-Services.ps1 |
-|---|---|---|
-| Docker エンジン | Rancher Desktop | WSL2 の既定ディストロ内の dockerd |
-| 接続先 | `npipe:////./pipe/docker_engine` | `unix:///var/run/docker.sock`（ディストロ内） |
+- redis: `redis-cli ping` / mongo: `mongosh --eval 1` / mysql: `mysqladmin ping` /
+  postgres: `pg_isready` / **sqlserver: Northwind ロード完了センチネル表 `__NorthwindReady` の存在**
+- 一定時間（各サービス最大約 150 秒）内に準備できないコンテナは、匿名ボリュームごと削除して
+  1 度だけ作り直す（本 compose は永続ボリューム未使用のため作り直しは無害）。破損データによる
+  クラッシュループを自動復旧する。
+- `up` の最後に、Windows の `localhost:<port>` への到達確認結果を表示する。
 
-compose ファイルもプロジェクト名（`localservicesondocker`）もコンテナ名も同じだが、
-デーモンが異なるため **中身は別々のコンテナ・別々のデータ** になる。運用上の注意は次のとおり。
-
-- **データは共有されない。** 一方で書き込んだデータは他方からは見えない。
-- **同時には起動できない。** 両者とも同じ Windows の localhost ポート
-  （6379 / 27017 / 3306 / 5432 / 1433）を公開するため、後から起動した方がポート競合で失敗する。
-  どちらか一方だけを使うこと。
-- **停止は対応するツールで行う。** Rancher 側（bat 起動）は `Stop-Services.bat` /
-  `Start-Services.bat down`、WSL 側（ps1 起動）は `Start-Services.ps1 down` で停止する。
-  相互のコンテナは見えないため、`Stop-Services.bat` では ps1 のコンテナは停止しない（逆も同様）。
+初期化完了待ちが不要なら `-NoWait` を付与する（起動のみ）。
 
 ### テスト方法
-テストを行う場合は、あらかじめ `Start-Services.bat`（Rancher Desktop）または
-`Start-Services.ps1`（WSL2）でサービスを起動しておく（両者は排他。同時起動不可）。Windows上から、
+テストを行う場合は、あらかじめサービスを起動しておく（DB の初期化完了まで待ちたい場合は `Start-Services.ps1` を推奨）。
 
 #### dotnet
 ConsoleApp1.sln プロジェクトを実行する。
