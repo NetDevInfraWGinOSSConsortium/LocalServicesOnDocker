@@ -57,6 +57,7 @@ $ServicePorts = [ordered]@{
     mysql     = 3306
     postgres  = 5432
     sqlserver = 1433
+    oracle    = 1521
 }
 
 # 各サービスの「準備完了」判定コマンド（docker compose exec -T <svc> で実行）。
@@ -69,7 +70,16 @@ $ReadyChecks = [ordered]@{
     # -b を付けて、その表がまだ無い（＝データ未ロード）間はエラー＝未準備とみなす。
     sqlserver = @('/opt/mssql-tools18/bin/sqlcmd', '-S', 'localhost', '-U', 'SA',
         '-P', 'seigi@123', '-C', '-b', '-d', 'Northwind', '-Q', 'SELECT ok FROM __NorthwindReady')
+    # oracle/init/01_setup.sql は Shippers 表を作った「後」に別名サービス XE を作る。
+    # そのため「XE 経由で SCOTT に接続でき、かつ Shippers が 3 行ある」ことを
+    # /ready/ready.sql で確認すれば、データ準備完了と判定できる。
+    # -L はログイン失敗時に再試行せず非ゼロ終了する。
+    oracle    = @('sqlplus', '-s', '-L', 'SCOTT/tiger@localhost/XE', '@/ready/ready.sql')
 }
+
+# 準備完了待ちの上限（秒）。Oracle は初回起動が長いため個別に延長する。
+$DefaultReadyTimeoutSec = 150
+$ReadyTimeouts = @{ oracle = 300 }
 
 # --- 出力ヘルパ -------------------------------------------------------------
 # 色付きで確実に行頭へ戻して出力する（ターミナル状態に依存しないよう CR+LF を明示）。
@@ -149,10 +159,11 @@ function Ensure-Service {
     # 匿名ボリュームごと削除してから up し直すと、イメージから正しく初期化される。
     param(
         [Parameter(Mandatory)][string]$Service,
-        [Parameter(Mandatory)][string[]]$Check
+        [Parameter(Mandatory)][string[]]$Check,
+        [int]$TimeoutSec = 150
     )
     Write-Line ("  - {0,-10} 準備待ち..." -f $Service) -NoNewline
-    if (Wait-Service -Service $Service -Check $Check) {
+    if (Wait-Service -Service $Service -Check $Check -TimeoutSec $TimeoutSec) {
         Write-Line " OK" -Color Green
         return $true
     }
@@ -160,7 +171,7 @@ function Ensure-Service {
     & docker compose rm -sfv $Service *> $null
     & docker compose up -d $Service *> $null
     Write-Line ("  - {0,-10} 再準備待ち..." -f $Service) -NoNewline
-    if (Wait-Service -Service $Service -Check $Check) {
+    if (Wait-Service -Service $Service -Check $Check -TimeoutSec $TimeoutSec) {
         Write-Line " OK" -Color Green
         return $true
     }
@@ -214,7 +225,8 @@ try {
                 Write-Line "各 DB の準備完了を待機します（初回や破損時は作り直します）:" -Color Cyan
                 $failed = @()
                 foreach ($svc in $ReadyChecks.Keys) {
-                    if (-not (Ensure-Service -Service $svc -Check $ReadyChecks[$svc])) {
+                    $timeout = if ($ReadyTimeouts.ContainsKey($svc)) { $ReadyTimeouts[$svc] } else { $DefaultReadyTimeoutSec }
+                    if (-not (Ensure-Service -Service $svc -Check $ReadyChecks[$svc] -TimeoutSec $timeout)) {
                         $failed += $svc
                     }
                 }

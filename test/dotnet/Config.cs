@@ -35,4 +35,12 @@ public static class Config
         $"Database={Env("MSSQL_DB", "Northwind")};" +
         $"User ID={Env("MSSQL_USER", "SA")};Password={Env("MSSQL_PASSWORD", "seigi@123")};" +
         "Encrypt=False;TrustServerCertificate=True";
+
+    // Oracle のデータソースは「ホスト[:ポート]/サービス名」形式（簡易接続）。
+    // XE は oracle/init/01_setup.sql が既定 PDB(FREEPDB1) に追加する別名サービス。
+    // 既定ポート(1521)以外を使う場合は ORACLE_DSN でデータソースごと上書きする
+    // （例: set ORACLE_DSN=localhost:1522/XE）。
+    public static string Oracle =>
+        $"User Id={Env("ORACLE_USER", "SCOTT")};Password={Env("ORACLE_PASSWORD", "tiger")};" +
+        $"Data Source={Env("ORACLE_DSN", $"{Host}/{Env("ORACLE_SERVICE", "XE")}")};";
 }

@@ -145,7 +145,7 @@ WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行�
 
 > 注: Rancher Desktop版の `.bat` と `.ps1` は、**同一の Rancher エンジン・同一コンテナ**を扱うため、一方で起動して
 > 他方で停止しても問題ない。一方 WSL2 版の `_wsl2.ps1` は WSL2 内の別デーモン上で動く**別インスタンス**であり、
-> 公開ポート（6379 / 27017 / 3306 / 5432 / 1433）が同じなので、Rancher Desktop版と同時に起動するとポート競合する。
+> 公開ポート（6379 / 27017 / 3306 / 5432 / 1433 / 1521）が同じなので、Rancher Desktop版と同時に起動するとポート競合する。
 > 用途に応じてどちらか一方だけを使うこと。
 
 ### 重複する仕様
@@ -163,6 +163,23 @@ SQL Server の公式イメージは、他の DB のように初期化スクリ�
 - SQL Server 起動後に自動実行され、既に Northwind があればスキップする（冪等）。
 - PowerShell版は、この Northwind DB が利用可能になるまで待ってから起動完了とする。
 
+#### Oracle の SCOTT スキーマと XE サービスの自動作成
+（Oracleコンテナ自体に実装されているため、`docker compose up` 直接実行時も自動作成される）
+
+Oracle Database 23ai Free（`gvenzl/oracle-free:23-slim`）は、DB 作成済みのイメージに
+初期化スクリプトの仕組みが用意されている。本リポジトリでは次の 2 点を自動化している。
+
+- **SCOTT/tiger ユーザ**: compose の `APP_USER` / `APP_USER_PASSWORD` により、
+  既定の PDB（`FREEPDB1`）に作成される。
+- **Shippers 表と別名サービス XE**: `oracle/init/01_setup.sql` が行う。
+  このスクリプトは `/container-entrypoint-startdb.d` に配置しており、**起動の度に**
+  `sqlplus / as sysdba` で実行されるため、すべて冪等（既にあれば何もしない）に書いている。
+  - 23ai Free の既定のサービス名は `FREEPDB1` だが、接続文字列 `Data Source=localhost/XE`
+    を使えるよう、`DBMS_SERVICE` で `FREEPDB1` に別名サービス `XE` を追加する。
+  - Shippers 表（他 DB と同じ 3 行）を作成した **後** に `XE` を作るため、
+    「`XE` 経由で SCOTT に接続できた＝データ準備完了」と判定できる。
+    PowerShell版はこれを利用して準備完了を待つ（`oracle/ready/ready.sql`）。
+
 #### DB 初期化完了待ち
 （PowerShell版に追加されている実装）
 
@@ -170,8 +187,9 @@ SQL Server の公式イメージは、他の DB のように初期化スクリ�
 判定はコンテナ内で `docker compose exec` 経由の疎通確認で行う。
 
 - redis: `redis-cli ping` / mongo: `mongosh --eval 1` / mysql: `mysqladmin ping` /
-  postgres: `pg_isready` / **sqlserver: Northwind ロード完了センチネル表 `__NorthwindReady` の存在**
-- 一定時間（各サービス最大約 150 秒）内に準備できないコンテナは、匿名ボリュームごと削除して
+  postgres: `pg_isready` / **sqlserver: Northwind ロード完了センチネル表 `__NorthwindReady` の存在** /
+  **oracle: `sqlplus -L SCOTT/tiger@localhost/XE` で Shippers が 3 行あること**
+- 一定時間（各サービス最大約 150 秒。初回起動の長い oracle のみ 300 秒）内に準備できないコンテナは、匿名ボリュームごと削除して
   1 度だけ作り直す（本 compose は永続ボリューム未使用のため作り直しは無害）。破損データによる
   クラッシュループを自動復旧する。
 - `up` の最後に、Windows の `localhost:<port>` への到達確認結果を表示する。
@@ -216,6 +234,7 @@ ConsoleApp1.sln プロジェクトを実行する。
   - "ConnectionString_SQL": "Data Source=localhost;Initial Catalog=Northwind;User ID=sa;Password=seigi@123;",
   - "ConnectionString_MCN": "Server=localhost;Database=test;User Id=root;Password=seigi@123",
   - "ConnectionString_NPS": "HOST=localhost;DATABASE=postgres;USER ID=postgres;PASSWORD=seigi@123;"
+  - "ConnectionString_ODP": "User Id=SCOTT;Password=tiger;Data Source=localhost/XE;"
 - NoSQL
   - redis : localhost
   - mongodb : mongodb://seigi:seigi%40123@localhost:27017

@@ -14,6 +14,7 @@
     "mongodb": "^6.8.0",
     "mssql": "^11.0.1",
     "mysql2": "^3.11.0",
+    "oracledb": "^7.0.1",
     "pg": "^8.12.0"
   },
   "scripts": {
@@ -22,6 +23,7 @@
     "test:mongo": "node TestMongo.js",
     "test:mysql": "node TestMySQL.js",
     "test:postgres": "node TestPostgres.js",
-    "test:sqlserver": "node TestSQLServer.js"
+    "test:sqlserver": "node TestSQLServer.js",
+    "test:oracle": "node TestOracle.js"
   }
 }

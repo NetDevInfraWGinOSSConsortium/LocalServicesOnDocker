@@ -11,6 +11,7 @@ TESTS = [
     ("MySQL", "test_mysql"),
     ("Postgres", "test_postgres"),
     ("SQLServer", "test_sqlserver"),
+    ("Oracle", "test_oracle"),
 ]
 
 

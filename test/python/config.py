@@ -43,3 +43,15 @@ SQLSERVER = {
     "password": os.environ.get("MSSQL_PASSWORD", "seigi@123"),
     "database": os.environ.get("MSSQL_DB", "Northwind"),
 }
+
+# 接続識別子は「ホスト[:ポート]/サービス名」形式（簡易接続）。
+# XE は oracle/init/01_setup.sql が既定 PDB(FREEPDB1) に追加する別名サービス。
+# 既定ポート(1521)以外を使う場合は ORACLE_DSN で丸ごと上書きする
+# （例: ORACLE_DSN=localhost:1522/XE）。
+ORACLE = {
+    "user": os.environ.get("ORACLE_USER", "SCOTT"),
+    "password": os.environ.get("ORACLE_PASSWORD", "tiger"),
+    "dsn": os.environ.get(
+        "ORACLE_DSN", f"{HOST}/{os.environ.get('ORACLE_SERVICE', 'XE')}"
+    ),
+}

@@ -11,6 +11,7 @@
 | MySQL | PyMySQL |
 | PostgreSQL | psycopg2 |
 | SQL Server | pymssql（FreeTDS 同梱・ODBC ドライバ不要） |
+| Oracle | python-oracledb（Thin モード・Oracle Client 不要） |
 
 - 依存関係は `pyproject.toml` に定義（uv が `.venv` を作成してインストールする）。
 - 接続設定は `config.py` に集約（環境変数で上書き可能）。
@@ -57,6 +58,7 @@
 > uv run python test_mysql.py
 > uv run python test_postgres.py
 > uv run python test_sqlserver.py
+> uv run python test_oracle.py
 ```
 
 接続先を変更する場合は環境変数で上書きできる（例）。

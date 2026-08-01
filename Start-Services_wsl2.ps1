@@ -69,6 +69,7 @@ $ServicePorts = [ordered]@{
     mysql     = 3306
     postgres  = 5432
     sqlserver = 1433
+    oracle    = 1521
 }
 
 # 各サービスの「準備完了」判定コマンド（docker compose exec -T <svc> で実行）。
@@ -87,7 +88,17 @@ $ReadyChecks = [ordered]@{
     # クエリは空白のみで特殊文字を含まないため PowerShell 5.1 でも壊れない。
     sqlserver = @('/opt/mssql-tools18/bin/sqlcmd', '-S', 'localhost', '-U', 'SA',
         '-P', 'seigi@123', '-C', '-b', '-d', 'Northwind', '-Q', 'SELECT ok FROM __NorthwindReady')
+    # oracle/init/01_setup.sql は Shippers 表を作った「後」に別名サービス XE を作る。
+    # そのため「XE 経由で SCOTT に接続でき、かつ Shippers が 3 行ある」ことを
+    # /ready/ready.sql で確認すれば、データ準備完了と判定できる。
+    # -L はログイン失敗時に再試行せず非ゼロ終了する。引数はいずれも空白・引用符を
+    # 含まないため wsl.exe 経由でも壊れない。
+    oracle    = @('sqlplus', '-s', '-L', 'SCOTT/tiger@localhost/XE', '@/ready/ready.sql')
 }
+
+# 準備完了待ちの上限（秒）。Oracle は初回起動が長いため個別に延長する。
+$DefaultReadyTimeoutSec = 150
+$ReadyTimeouts = @{ oracle = 300 }
 
 # --- 出力ヘルパ -------------------------------------------------------------
 # wsl.exe を実行すると、以降 PowerShell の改行が行頭復帰(CR)を伴わなくなり、
@@ -220,10 +231,11 @@ function Ensure-Service {
     # 準備完了を待ち、駄目なら 1 度だけ作り直して再度待つ。
     param(
         [Parameter(Mandatory)][string]$Service,
-        [Parameter(Mandatory)][string[]]$Check
+        [Parameter(Mandatory)][string[]]$Check,
+        [int]$TimeoutSec = 150
     )
     Write-Line ("  - {0,-10} 準備待ち..." -f $Service) -NoNewline
-    if (Wait-Service -Service $Service -Check $Check) {
+    if (Wait-Service -Service $Service -Check $Check -TimeoutSec $TimeoutSec) {
         Write-Line " OK" -Color Green
         return $true
     }
@@ -235,7 +247,7 @@ function Ensure-Service {
     Invoke-WslQuiet @('docker', 'compose', 'rm', '-sfv', $Service) | Out-Null
     Invoke-WslQuiet @('docker', 'compose', 'up', '-d', $Service) | Out-Null
     Write-Line ("  - {0,-10} 再準備待ち..." -f $Service) -NoNewline
-    if (Wait-Service -Service $Service -Check $Check) {
+    if (Wait-Service -Service $Service -Check $Check -TimeoutSec $TimeoutSec) {
         Write-Line " OK" -Color Green
         return $true
     }
@@ -305,7 +317,8 @@ switch ($Action) {
             Write-Line "各 DB の準備完了を待機します（初回や破損時は作り直します）:" -Color Cyan
             $failed = @()
             foreach ($svc in $ReadyChecks.Keys) {
-                if (-not (Ensure-Service -Service $svc -Check $ReadyChecks[$svc])) {
+                $timeout = if ($ReadyTimeouts.ContainsKey($svc)) { $ReadyTimeouts[$svc] } else { $DefaultReadyTimeoutSec }
+                if (-not (Ensure-Service -Service $svc -Check $ReadyChecks[$svc] -TimeoutSec $timeout)) {
                     $failed += $svc
                 }
             }

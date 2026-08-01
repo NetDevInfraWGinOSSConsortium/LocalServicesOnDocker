@@ -10,6 +10,7 @@
 | MySQL | MySqlConnector |
 | PostgreSQL | Npgsql |
 | SQL Server | Microsoft.Data.SqlClient |
+| Oracle | Oracle.ManagedDataAccess.Core（ODP.NET Core・Oracle Client 不要） |
 
 - 接続設定は `Config.cs` に集約（環境変数で上書き可能）。
 - `Program.cs` が全テストを順に実行し、結果サマリを表示。失敗時は終了コード 1 で終了する。
@@ -49,6 +50,7 @@
 > dotnet run -- mysql
 > dotnet run -- postgres
 > dotnet run -- sqlserver
+> dotnet run -- oracle
 ```
 
 接続先を変更する場合は環境変数で上書きできる（例）。

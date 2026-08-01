@@ -9,6 +9,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("MySQL", TestMySql.RunAsync),
     ("Postgres", TestPostgres.RunAsync),
     ("SQLServer", TestSqlServer.RunAsync),
+    ("Oracle", TestOracle.RunAsync),
 };
 
 var filter = args.Length > 0 ? args[0].Trim().ToLowerInvariant() : null;

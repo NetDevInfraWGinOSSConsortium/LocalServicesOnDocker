@@ -83,6 +83,31 @@ services:
     networks:
       - common_link
 
+  oracle:
+    # Oracle Database 23ai Free（Oracle の Gerald Venzl 氏がメンテナンスする
+    # Docker Hub 版イメージ。DB 作成済みのため初回起動が速く、初期化スクリプトの
+    # 仕組みも他の DB と同様に用意されている）。slim は不要機能を省いた軽量版。
+    image: gvenzl/oracle-free:23-slim
+    restart: always
+    environment:
+      # SYS / SYSTEM のパスワード（他サービスと同じ値に合わせる）。
+      - ORACLE_PASSWORD=seigi@123
+      # 既定 PDB(FREEPDB1) にアプリ用ユーザ SCOTT/tiger を作成する。
+      - APP_USER=SCOTT
+      - APP_USER_PASSWORD=tiger
+    ports:
+      - 1521:1521
+    # Oracle は共有メモリを多く使うため、既定の 64MB では起動に失敗することがある。
+    shm_size: '1gb'
+    volumes:
+      # 起動の度に実行される初期化スクリプト（Shippers 表と別名サービス XE を作成）。
+      - ./oracle/init:/container-entrypoint-startdb.d
+      # PowerShell 版の準備完了判定で使う sqlplus スクリプト。
+      # 起動時に自動実行されないよう、init とは別のフォルダに置く。
+      - ./oracle/ready:/ready
+    networks:
+      - common_link
+
 networks:
   common_link:
     external: true

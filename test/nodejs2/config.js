@@ -46,4 +46,16 @@ module.exports = {
       trustServerCertificate: true,
     },
   },
+
+  // 接続識別子は「ホスト[:ポート]/サービス名」形式（簡易接続）。
+  // XE は oracle/init/01_setup.sql が既定 PDB(FREEPDB1) に追加する別名サービス。
+  // 既定ポート(1521)以外を使う場合は ORACLE_DSN で丸ごと上書きする
+  // （例: ORACLE_DSN=localhost:1522/XE）。
+  oracle: {
+    user: process.env.ORACLE_USER || 'SCOTT',
+    password: process.env.ORACLE_PASSWORD || 'tiger',
+    connectString:
+      process.env.ORACLE_DSN ||
+      `${host}/${process.env.ORACLE_SERVICE || 'XE'}`,
+  },
 };

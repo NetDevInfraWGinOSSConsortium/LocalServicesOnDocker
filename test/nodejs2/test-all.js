@@ -8,6 +8,7 @@ const tests = [
   ['MySQL', './TestMySQL'],
   ['Postgres', './TestPostgres'],
   ['SQLServer', './TestSQLServer'],
+  ['Oracle', './TestOracle'],
 ];
 
 async function main() {

@@ -10,6 +10,7 @@
 | MySQL | mysql v2（保守終了） | mysql2 v3 / Promise API |
 | Postgres | pg v8（コールバック） | pg v8 / async-await |
 | SQL Server | tedious v8（低レベル） | mssql v11 / async-await |
+| Oracle | （なし） | node-oracledb v7 / Thin モード（Oracle Client 不要） |
 
 - 接続設定を `config.js` に集約（環境変数で上書き可能）。
 - 一括実行用の `test-all.js` を追加。結果サマリを表示し、失敗時は終了コード 1 で終了。
@@ -49,6 +50,7 @@
 > npm run test:mysql
 > npm run test:postgres
 > npm run test:sqlserver
+> npm run test:oracle
 ```
 
 接続先を変更する場合は環境変数で上書きできる（例）。

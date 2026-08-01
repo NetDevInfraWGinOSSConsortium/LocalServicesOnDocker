@@ -9,6 +9,7 @@ dependencies = [
     "PyMySQL>=1.1",
     "psycopg2-binary>=2.9",
     "pymssql>=2.2",
+    "oracledb>=3.0",
 ]
 
 # このプロジェクト自体はパッケージ（配布物）ではなくスクリプト集なので、
