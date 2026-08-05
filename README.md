@@ -132,16 +132,58 @@ WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行�
   Windows↔WSL の localhost 転送は「Windows 側に生きた `wsl` セッションがある間」だけ維持される。
   上記キープアライブがこのセッションを保持するため、Windows から `localhost:<port>` で接続できる。
 
+#### Reboot-Services.ps1 から再起動する
+（特定のサービスだけを再起動したい場合）
+
+コマンドラインで指定したサービスだけを再起動し、そのサービスが再び接続可能になるまで待機する。
+「MySQL だけ調子が悪い」「Oracle だけ入れ直したい」といった場合に、全体を停止せずに済む。
+`Reboot-Services.ps1` が Rancher Desktop 版、`Reboot-Services_wsl2.ps1` が WSL2 版で、
+それぞれ `Start-Services.ps1` / `Start-Services_wsl2.ps1` の設定・判定処理をそのまま再利用する。
+
+**サービス名を指定しなかった場合は、ヘルプ（指定できるサービス名の一覧）を表示して終了する。**
+```
+> .\Reboot-Services.ps1
+```
+
+サービス名はスペース区切りで複数指定でき、大文字小文字は区別しない。`all` で全サービスを対象にする。
+```
+> .\Reboot-Services.ps1 mysql
+> .\Reboot-Services.ps1 mysql redis
+> .\Reboot-Services.ps1 all
+```
+
+主なオプション:
+- `-Recreate`: `docker compose restart` ではなく、コンテナを**匿名ボリュームごと削除して作り直す**。
+  公式 mysql / mssql イメージはデータを匿名ボリュームに持つため、restart では直らないデータ破損からの
+  復旧に使う（本 compose は永続ボリューム未使用のため作り直しは無害）。
+- `-NoWait` / `-NoPause`: `Start-Services.ps1` と同じ。
+- `-Distro`: WSL2 版のみ。WSL ディストリビューションを指定する。
+```
+> .\Reboot-Services.ps1 mysql -Recreate
+> .\Reboot-Services_wsl2.ps1 all -Distro Ubuntu-22.04
+```
+
+補足:
+- 指定したサービスのコンテナがまだ作られていない場合は、`restart` ではなく `up -d` で作成する。
+  `docker compose restart` は対象コンテナが存在しなくてもエラーにならず何もしないため、
+  事前に存在を確認したうえで振り分けている。
+- 再起動後は `Start-Services.ps1` と同じ準備完了待ち（応答しなければ 1 度だけ作り直し）と、
+  `localhost:<port>` への到達確認を、指定したサービスについてのみ行う。
+- WSL2 版は処理の前にキープアライブを起動するため、VM がアイドル停止していてもそのまま実行できる。
+
 #### スクリプトの使い分け
 | スクリプト | Docker エンジン | DB 初期化完了待ち | 主なオプション |
 |---|---|---|---|
 | `Start-Services.bat` / `Stop-Services.bat` | Rancher Desktop | しない | — |
 | `Start-Services.ps1` / `Stop-Services.ps1` | Rancher Desktop | する（`-NoWait` で省略可） | `-NoWait` `-NoPause` |
 | `Start-Services_wsl2.ps1` / `Stop-Services_wsl2.ps1` | WSL2 内の dockerd | する | `-Distro` `-NoWait` `-NoPause` |
+| `Reboot-Services.ps1` | Rancher Desktop | する（指定サービスのみ） | `-Recreate` `-NoWait` `-NoPause` |
+| `Reboot-Services_wsl2.ps1` | WSL2 内の dockerd | する（指定サービスのみ） | `-Distro` `-Recreate` `-NoWait` `-NoPause` |
 
 - 手早く起動したい・ダブルクリックで済ませたい → `Start-Services.bat`
 - テスト前に DB が使える状態まで待ってから始めたい → `Start-Services.ps1`
 - Rancher Desktop 未導入で WSL2 内の Docker を使う → `Start-Services_wsl2.ps1`
+- 特定の DB だけ再起動したい・壊れた DB だけ入れ直したい → `Reboot-Services.ps1`（WSL2 なら `Reboot-Services_wsl2.ps1`）
 
 > 注: Rancher Desktop版の `.bat` と `.ps1` は、**同一の Rancher エンジン・同一コンテナ**を扱うため、一方で起動して
 > 他方で停止しても問題ない。一方 WSL2 版の `_wsl2.ps1` は WSL2 内の別デーモン上で動く**別インスタンス**であり、
@@ -195,6 +237,11 @@ Oracle Database 23ai Free（`gvenzl/oracle-free:23-slim`）は、DB 作成済み
 - `up` の最後に、Windows の `localhost:<port>` への到達確認結果を表示する。
 
 初期化完了待ちが不要なら `-NoWait` を付与する（起動のみ）。
+
+`Reboot-Services.ps1` / `Reboot-Services_wsl2.ps1` は、この判定テーブルと待機・自動復旧処理を
+`Start-Services.ps1` / `Start-Services_wsl2.ps1` からドットソース（内部用スイッチ `-AsLibrary`）で
+再利用しており、指定されたサービスに対して同じ判定を行う。判定内容が二重管理にならないようにするため、
+接続情報やタイムアウトを変更する場合は `Start-Services*.ps1` 側だけを直せばよい。
 
 ### テスト方法
 テストを行う場合は、あらかじめサービスを起動しておく（DB の初期化完了まで待ちたい場合は `Start-Services.ps1` を推奨）。

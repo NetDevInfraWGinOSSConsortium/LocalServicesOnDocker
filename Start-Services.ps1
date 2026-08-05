@@ -24,6 +24,10 @@
     完了時のキー入力待ち（Start-Services.bat の pause 相当）を行わない。
     入力がリダイレクトされている非対話実行では、指定しなくても自動的に待たない。
 
+.PARAMETER AsLibrary
+    定義（設定テーブルと関数）だけを読み込み、up/down 等の本処理は実行せずに戻る。
+    Reboot-Services.ps1 がドットソースで再利用するための内部用スイッチ。
+
 .EXAMPLE
     .\Start-Services.ps1
     コンテナを起動し、全 DB が接続可能になるまで待つ。
@@ -40,7 +44,9 @@ param(
 
     [switch]$NoWait,
 
-    [switch]$NoPause
+    [switch]$NoPause,
+
+    [switch]$AsLibrary
 )
 
 # native docker はプログレス等を stderr に書き、また意図的に非ゼロ終了する場面
@@ -196,6 +202,10 @@ function Test-WindowsPort {
 }
 
 # ===========================================================================
+# ドットソース（. Start-Services.ps1 -AsLibrary）で読み込まれた場合は、上の定義
+# だけを呼び出し元のスコープへ提供し、本処理は行わずに戻る。
+if ($AsLibrary) { return }
+
 try {
     # docker-compose.yml のあるフォルダ（＝本スクリプトの場所）で実行する。
     Push-Location -LiteralPath $PSScriptRoot
