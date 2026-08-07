@@ -85,6 +85,8 @@ common_link 作成 → `docker compose up -d` / `down`だけを実行する。
   `Reboot-Services*.ps1` だけは、省略時にヘルプを表示して終了する（再起動対象を明示させるため）。
 - 存在しない名前を指定した場合は、その名前を表示したうえでヘルプを出し、何もせずに終了する
   （一部だけ正しい場合も実行しない）。
+- 空文字列・空白のみの引数は**指定なしと同じ扱い**（`Start-Services.ps1 ""` は引数なしと同じく全サービス up）。
+  バッチから未設定の変数（`%SERVICES%` など）がそのまま渡っても、無言で何もせず終わることはない。
 
 ##### ヘルプの表示
 
@@ -232,6 +234,37 @@ WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行�
   `localhost:<port>` への到達確認を、指定したサービスについてのみ行う。
 - WSL2 版は処理の前にキープアライブを起動するため、VM がアイドル停止していてもそのまま実行できる。
 
+#### oretoku-set.bat から決め打ちで起動する
+（いつも同じサービスだけ使う場合）
+
+毎回サービス名を打つ代わりに、起動するサービスを**ファイル内に書いておく**ためのショートカット。
+`oretoku-set.bat` が Rancher Desktop 版、`oretoku-set_wsl2.bat` が WSL2 版で、
+中身は `Start-Services*.ps1` を呼ぶだけ。ダブルクリック起動を想定している。
+
+対象サービスは先頭付近の `SERVICES` を書き換えて選ぶ。使いたい組み合わせを行ごとに用意しておき、
+**行単位でコメントアウト**して切り替えるのが安全。
+```bat
+rem Oracle takes the longest to boot, so it is left out by default.
+set "SERVICES=sqlserver"
+rem set "SERVICES=sqlserver oracle postgres mysql"
+rem set "SERVICES=all"
+```
+
+`oretoku-set_wsl2.bat` では `DISTRO` も指定できる（空なら既定のディストリビューション）。
+```bat
+set "DISTRO=Ubuntu-22.04"
+```
+
+補足:
+- **`::` は行頭でのみコメントになる。** 行の途中に書くと引数としてそのまま渡り、
+  `::"oracle"` は `::oracle` というサービス名とみなされて**起動が丸ごと失敗する**。
+  上記のように行単位でコメントアウトすること。
+- `SERVICES` が空のまま実行した場合は、その旨を表示して終了する（意図しない全サービス起動を防ぐため）。
+- `%~dp0` を使っているので、どのフォルダから実行しても動作する。
+- 成功時はウィンドウを閉じ、失敗時のみ `pause` する。
+- これらは他の `.bat` と同じく **ASCII のみ**で書く（`chcp 65001` のとき cmd.exe が
+  マルチバイトのバッチをパースに失敗するため）。
+
 #### スクリプトの使い分け
 | スクリプト | Docker エンジン | サービス名の指定 | ヘルプ | DB 初期化完了待ち | 主なオプション |
 |---|---|---|---|---|---|
@@ -240,11 +273,13 @@ WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行�
 | `Start-Services_wsl2.ps1` / `Stop-Services_wsl2.ps1` | WSL2 内の dockerd | できる（省略時は全部） | `help` / `-Help` | する | `-Distro` `-NoWait` `-NoPause` |
 | `Reboot-Services.ps1` | Rancher Desktop | できる（省略時はヘルプ） | 引数なし / `help` | する（指定サービスのみ） | `-Recreate` `-NoWait` `-NoPause` |
 | `Reboot-Services_wsl2.ps1` | WSL2 内の dockerd | できる（省略時はヘルプ） | 引数なし / `help` | する（指定サービスのみ） | `-Distro` `-Recreate` `-NoWait` `-NoPause` |
+| `oretoku-set.bat` / `oretoku-set_wsl2.bat` | 上記 `Start-Services*.ps1` に委譲 | ファイル内の `SERVICES` で固定 | — | する | （ファイル内で編集） |
 
 - 手早く起動したい・ダブルクリックで済ませたい → `Start-Services.bat`
 - テスト前に DB が使える状態まで待ってから始めたい → `Start-Services.ps1`
 - Rancher Desktop 未導入で WSL2 内の Docker を使う → `Start-Services_wsl2.ps1`
 - 特定の DB だけ再起動したい・壊れた DB だけ入れ直したい → `Reboot-Services.ps1`（WSL2 なら `Reboot-Services_wsl2.ps1`）
+- いつも同じサービスだけ使う・ダブルクリックで済ませたい → `oretoku-set.bat`
 
 #### スクリプトの構成（共通部品）
 
@@ -263,12 +298,17 @@ Services.Common.ps1                    ← 設定と共通関数（エンジン�
 
 | 置き場所 | 内容 |
 |---|---|
-| `Services.Common.ps1` | `$NetworkName` `$ServicePorts` `$ReadyChecks` `$ReadyTimeouts` `$HelpTokens`／`Write-Line` `Wait-ForKey` `Wait-Service` `Ensure-Service` `Test-WindowsPort` `Show-ServiceList` `Test-HelpRequested` `Resolve-Targets` |
-| `Start-Services.ps1` / `Start-Services_wsl2.ps1` | `$ErrorActionPreference`、`Invoke-ComposeQuiet`、`Wait-DockerDaemon`、`Show-Usage`、WSL 実行ヘルパ、キープアライブ |
+| `Services.Common.ps1` | `$NetworkName` `$ServicePorts` `$ReadyChecks` `$ReadyTimeouts` `$HelpTokens`／`Write-Line` `Wait-ForKey` `Wait-Service` `Ensure-Service` `Resolve-ComposeUpFailure` `Test-WindowsPort` `Show-ServiceList` `Test-HelpRequested` `Resolve-Targets` |
+| `Start-Services.ps1` / `Start-Services_wsl2.ps1` | `$ErrorActionPreference`、`Invoke-ComposeQuiet`、`Invoke-ComposeCapture`、`Wait-DockerDaemon`、`Show-Usage`、WSL 実行ヘルパ、キープアライブ |
 
-`Wait-Service` / `Ensure-Service` は compose コマンドの実行を `Invoke-ComposeQuiet` に委ねている。
-これが唯一のエンジン差し替え点で、各 `Start-Services*.ps1` が自分のエンジン向けに定義する
+共通部品は compose コマンドの実行を次の 2 つに委ねている。これがエンジンの差し替え点で、
+各 `Start-Services*.ps1` が自分のエンジン向けに定義する
 （native は `docker compose ...`、WSL2 版は `wsl --cd <path> docker compose ...`）。
+
+| フック | 用途 |
+|---|---|
+| `Invoke-ComposeQuiet` | 出力を捨てて終了コードだけ返す（`Wait-Service` / `Ensure-Service` の判定用） |
+| `Invoke-ComposeCapture` | 標準出力を文字列で返す（`Resolve-ComposeUpFailure` の状態取得用） |
 
 > 注: `Services.Common.ps1` は 6 本すべての前提なので、スクリプトだけを別フォルダへコピーしても動かない。
 > 見つからない場合は「共通部品が見つかりません: ...」で停止する。
@@ -277,6 +317,19 @@ Services.Common.ps1                    ← 設定と共通関数（エンジン�
 > 他方で停止しても問題ない。一方 WSL2 版の `_wsl2.ps1` は WSL2 内の別デーモン上で動く**別インスタンス**であり、
 > 公開ポート（6379 / 27017 / 3306 / 5432 / 1433 / 1521）が同じなので、Rancher Desktop版と同時に起動するとポート競合する。
 > 用途に応じてどちらか一方だけを使うこと。
+
+同時に起動しようとした場合、PowerShell 版は `up` の失敗を検出して次のように案内し、
+起動できずに `created` のまま残ったコンテナを自動で片付ける（もう一方の稼働中コンテナには手を触れない）。
+
+```
+ヒント: 次のポートは既に使用されています: redis(6379)
+        Rancher Desktop 版と WSL2 版は同じ公開ポートを使うため、同時には起動できません。
+        もう一方を停止してから再実行してください（Stop-Services.ps1 / Stop-Services_wsl2.ps1）。
+起動できなかったコンテナを片付けます: redis
+```
+
+判定は Docker のエラー文言ではなく**公開ポートへの実接続**（`Test-WindowsPort`）で行うため、
+Docker のバージョンやメッセージの変更に影響されない。
 
 ### 重複する仕様
 
