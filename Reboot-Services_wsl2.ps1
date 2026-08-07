@@ -73,7 +73,9 @@ param(
 # 設定テーブル（$ServicePorts / $ReadyChecks / $ReadyTimeouts / $NetworkName）と
 # 関数（Write-Line / Wait-ForKey / Invoke-Wsl / Invoke-WslQuiet / Start-KeepAlive /
 # Wait-DockerDaemon / Resolve-Targets / Ensure-Service / Test-WindowsPort など）を
-# Start-Services_wsl2.ps1 から取り込む。-AsLibrary により本処理は走らない。
+# Start-Services_wsl2.ps1 から取り込む。エンジン非依存の分は Start-Services_wsl2.ps1 が
+# さらに Services.Common.ps1 から取り込むため、ここまで連鎖して届く。
+# -AsLibrary により本処理は走らない。
 # $Distro は WSL 実行ヘルパ（$wslBaseArgs / $wslPath）の組み立てに必要なので必ず渡す。
 # 注: ドットソースは相手の param 変数も呼び出し元スコープへ持ち込むため、$Service /
 #     $NoWait / $NoPause は同じ値を明示的に渡して、自分の指定が上書きされないようにする。

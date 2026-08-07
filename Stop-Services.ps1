@@ -44,13 +44,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# ヘルプ表示に使う共通部品（Write-Line / Wait-ForKey / Show-ServiceList /
+# Test-HelpRequested）を読み込む。停止処理そのものは Start-Services.ps1 へ委譲する。
+$commonPath = Join-Path $PSScriptRoot 'Services.Common.ps1'
+if (-not (Test-Path -LiteralPath $commonPath)) {
+    throw "共通部品が見つかりません: $commonPath"
+}
+. $commonPath
+
 # --- ヘルプ（引数なしは全サービス停止なので、help / -Help で明示的に要求する）----
-$HelpTokens = @('help', '--help', '/?', '?')
-if ($Help -or @($Service | Where-Object { $HelpTokens -contains $_ }).Count -gt 0) {
-    # 出力ヘルパ（Write-Line）とサービス名一覧（Show-ServiceList）を Start-Services.ps1
-    # から取り込む。-AsLibrary により本処理は走らない。
-    # 注: ドットソースは相手の param 変数も持ち込むため、自分の指定値を明示的に渡す。
-    . "$PSScriptRoot\Start-Services.ps1" -AsLibrary -Service $Service -NoPause:$NoPause
+if ($Help -or (Test-HelpRequested -Names $Service)) {
     Write-Line ""
     Write-Line "使い方: .\Stop-Services.ps1 [<サービス名> ...] [-NoPause]" -Color Cyan
     Write-Line ""

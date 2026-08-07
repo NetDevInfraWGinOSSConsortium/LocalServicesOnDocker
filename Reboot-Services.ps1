@@ -66,6 +66,8 @@ param(
 # 設定テーブル（$ServicePorts / $ReadyChecks / $ReadyTimeouts / $NetworkName）と
 # 関数（Write-Line / Wait-ForKey / Wait-DockerDaemon / Resolve-Targets /
 # Ensure-Service / Test-WindowsPort など）を Start-Services.ps1 から取り込む。
+# エンジン非依存の分は Start-Services.ps1 がさらに Services.Common.ps1 から取り込む
+# ため、ここまで連鎖して届く。
 # -AsLibrary により、読み込んだ時点で up などの本処理は走らない。
 # 注: ドットソースは相手の param 変数も呼び出し元スコープへ持ち込むため、$Service /
 #     $NoWait / $NoPause は同じ値を明示的に渡して、自分の指定が上書きされないようにする。

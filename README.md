@@ -97,8 +97,8 @@ common_link 作成 → `docker compose up -d` / `down`だけを実行する。
 > .\Stop-Services.ps1 help
 > .\Reboot-Services.ps1
 ```
-`help` の代わりに `--help` / `/?` / `?` でも同じ。表示される一覧はスクリプト側の定義
-（`Start-Services*.ps1` の `$ServicePorts`）から生成しているため、常に最新の内容になる。
+`help` の代わりに `--help` / `/?` / `?` でも同じ。表示される一覧は
+[共通部品](#スクリプトの構成共通部品)の `$ServicePorts` から生成しているため、常に最新の内容になる。
 なお `Get-Help .\Start-Services.ps1 -Full` では、各パラメーターの詳しい説明を参照できる。
 
 #### Start-Services.ps1 から実行する
@@ -246,6 +246,33 @@ WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行�
 - Rancher Desktop 未導入で WSL2 内の Docker を使う → `Start-Services_wsl2.ps1`
 - 特定の DB だけ再起動したい・壊れた DB だけ入れ直したい → `Reboot-Services.ps1`（WSL2 なら `Reboot-Services_wsl2.ps1`）
 
+#### スクリプトの構成（共通部品）
+
+PowerShell 版 6 本は、Docker エンジンに依存しない部分を `Services.Common.ps1` に集約している。
+このファイルは**ドットソース専用**（定義のみ）で、直接実行しても何も起きない。
+
+```
+Services.Common.ps1                    ← 設定と共通関数（エンジン非依存）
+  ├─ Start-Services.ps1                ← native docker 固有の処理
+  │    ├─ Stop-Services.ps1            （down のショートカット）
+  │    └─ Reboot-Services.ps1          （-AsLibrary でドットソース）
+  └─ Start-Services_wsl2.ps1           ← WSL2 固有の処理
+       ├─ Stop-Services_wsl2.ps1
+       └─ Reboot-Services_wsl2.ps1
+```
+
+| 置き場所 | 内容 |
+|---|---|
+| `Services.Common.ps1` | `$NetworkName` `$ServicePorts` `$ReadyChecks` `$ReadyTimeouts` `$HelpTokens`／`Write-Line` `Wait-ForKey` `Wait-Service` `Ensure-Service` `Test-WindowsPort` `Show-ServiceList` `Test-HelpRequested` `Resolve-Targets` |
+| `Start-Services.ps1` / `Start-Services_wsl2.ps1` | `$ErrorActionPreference`、`Invoke-ComposeQuiet`、`Wait-DockerDaemon`、`Show-Usage`、WSL 実行ヘルパ、キープアライブ |
+
+`Wait-Service` / `Ensure-Service` は compose コマンドの実行を `Invoke-ComposeQuiet` に委ねている。
+これが唯一のエンジン差し替え点で、各 `Start-Services*.ps1` が自分のエンジン向けに定義する
+（native は `docker compose ...`、WSL2 版は `wsl --cd <path> docker compose ...`）。
+
+> 注: `Services.Common.ps1` は 6 本すべての前提なので、スクリプトだけを別フォルダへコピーしても動かない。
+> 見つからない場合は「共通部品が見つかりません: ...」で停止する。
+
 > 注: Rancher Desktop版の `.bat` と `.ps1` は、**同一の Rancher エンジン・同一コンテナ**を扱うため、一方で起動して
 > 他方で停止しても問題ない。一方 WSL2 版の `_wsl2.ps1` は WSL2 内の別デーモン上で動く**別インスタンス**であり、
 > 公開ポート（6379 / 27017 / 3306 / 5432 / 1433 / 1521）が同じなので、Rancher Desktop版と同時に起動するとポート競合する。
@@ -301,11 +328,9 @@ Oracle Database 23ai Free（`gvenzl/oracle-free:23-slim`）は、DB 作成済み
 
 サービス名を指定した場合は、**指定したサービスについてのみ**この待機と到達確認を行う。
 
-`Reboot-Services.ps1` / `Reboot-Services_wsl2.ps1` は、この判定テーブルと待機・自動復旧処理、
-およびサービス名の解決処理を `Start-Services.ps1` / `Start-Services_wsl2.ps1` からドットソース
-（内部用スイッチ `-AsLibrary`）で再利用しており、指定されたサービスに対して同じ判定を行う。
-判定内容が二重管理にならないようにするため、接続情報・タイムアウト・サービス名の一覧を変更する場合は
-`Start-Services*.ps1` 側だけを直せばよい。
+この判定テーブル（`$ReadyChecks`）と待機・自動復旧処理（`Wait-Service` / `Ensure-Service`）は
+[`Services.Common.ps1`](#スクリプトの構成共通部品) にあり、6 本のスクリプトすべてが同じものを使う。
+**接続情報・タイムアウト・サービス名の一覧を変更する場合は `Services.Common.ps1` だけを直せばよい。**
 
 ### テスト方法
 テストを行う場合は、あらかじめサービスを起動しておく（DB の初期化完了まで待ちたい場合は `Start-Services.ps1` を推奨）。
