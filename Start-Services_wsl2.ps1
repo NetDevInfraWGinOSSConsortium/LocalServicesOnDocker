@@ -21,6 +21,7 @@
     down  : docker compose down で停止し、キープアライブも解除する。
     ps    : コンテナの稼働状況を表示する。
     logs  : コンテナのログを表示する（Ctrl+C で終了）。
+    help  : 使い方（指定できるサービス名の一覧）を表示して終了する。
     省略できる（既定 up）。先頭の引数が上記以外ならサービス名とみなす。
 
 .PARAMETER Service
@@ -30,6 +31,10 @@
 
 .PARAMETER Distro
     使用する WSL ディストリビューション名。省略時は既定のディストリビューションを使用する。
+
+.PARAMETER Help
+    使い方（指定できるサービス名の一覧）を表示して終了する。
+    引数なしは「全サービスを up」なので、ヘルプは help / -Help で明示的に要求する。
 
 .PARAMETER NoWait
     up 時に DB の準備完了待ちを行わない。
@@ -57,6 +62,10 @@
 .EXAMPLE
     .\Start-Services_wsl2.ps1 down oracle
     oracle だけを停止・削除する（キープアライブは維持）。
+
+.EXAMPLE
+    .\Start-Services_wsl2.ps1 help
+    使い方と指定できるサービス名の一覧を表示する（-Help でも同じ）。
 #>
 [CmdletBinding()]
 param(
@@ -69,6 +78,8 @@ param(
     [string[]]$Service,
 
     [string]$Distro,
+
+    [switch]$Help,
 
     [switch]$NoWait,
 
@@ -295,6 +306,27 @@ function Test-WindowsPort {
     finally { $client.Close() }
 }
 
+# --- ヘルプ部品 -------------------------------------------------------------
+function Show-ServiceList {
+    # 指定できるサービス名の一覧。Stop-Services_wsl2.ps1 / Reboot-Services_wsl2.ps1 の
+    # ヘルプからも同じものを使う（一覧が二重管理にならないようにするため）。
+    param([string]$AllNote = '上記すべて')
+    Write-Line "指定できるサービス名:" -Color Cyan
+    foreach ($name in $ServicePorts.Keys) {
+        Write-Line ("  {0,-10} localhost:{1}" -f $name, $ServicePorts[$name])
+    }
+    Write-Line ("  {0,-10} {1}" -f 'all', $AllNote)
+}
+
+# ヘルプ表示を要求する引数。-Help スイッチでも同じ。
+$HelpTokens = @('help', '--help', '/?', '?')
+
+function Test-HelpRequested {
+    # 引数のどこかにヘルプ要求のトークンがあれば $true。
+    param([string[]]$Names)
+    return (@($Names | Where-Object { $HelpTokens -contains $_ }).Count -gt 0)
+}
+
 # --- サービス名の解決 -------------------------------------------------------
 function Resolve-Targets {
     # 指定名を正規のサービス名へ解決する。all は全サービスへ展開し、重複は取り除く。
@@ -346,7 +378,7 @@ if ($AsLibrary) { return }
 # Reboot-Services_wsl2.ps1 が自前の Show-Usage を定義しても衝突しない）。
 function Show-Usage {
     Write-Line ""
-    Write-Line "使い方: .\Start-Services_wsl2.ps1 [up|down|ps|logs] [<サービス名> ...] [-Distro <名前>] [-NoWait] [-NoPause]" -Color Cyan
+    Write-Line "使い方: .\Start-Services_wsl2.ps1 [up|down|ps|logs|help] [<サービス名> ...] [-Distro <名前>] [-NoWait] [-NoPause]" -Color Cyan
     Write-Line ""
     Write-Line "  アクションを省略すると up、サービス名を省略すると全サービスが対象になります。"
     Write-Line ""
@@ -355,22 +387,27 @@ function Show-Usage {
     Write-Line "  down        停止する（全サービスのときはキープアライブも解除）"
     Write-Line "  ps          稼働状況を表示する"
     Write-Line "  logs        ログを表示する（Ctrl+C で終了）"
+    Write-Line "  help        この使い方を表示する（-Help でも可）"
     Write-Line ""
-    Write-Line "指定できるサービス名:" -Color Cyan
-    foreach ($name in $ServicePorts.Keys) {
-        Write-Line ("  {0,-10} localhost:{1}" -f $name, $ServicePorts[$name])
-    }
-    Write-Line ("  {0,-10} 上記すべて（省略時と同じ）" -f 'all')
+    Show-ServiceList -AllNote '上記すべて（省略時と同じ）'
     Write-Line ""
     Write-Line "例:" -Color Cyan
     Write-Line "  .\Start-Services_wsl2.ps1"
     Write-Line "  .\Start-Services_wsl2.ps1 mysql redis"
     Write-Line "  .\Start-Services_wsl2.ps1 down oracle"
+    Write-Line "  .\Start-Services_wsl2.ps1 help"
     Write-Line ""
     Write-Line "詳細は Get-Help .\Start-Services_wsl2.ps1 -Full で参照できます。" -Color DarkGray
 }
 
 # --- 引数の解釈（本処理前に済ませ、問題があればヘルプを出して終了）--------------
+# 引数なしは「全サービスを up」なので、ヘルプは help / -Help で明示的に要求する。
+if ($Help -or (Test-HelpRequested -Names (@($Action) + @($Service)))) {
+    Show-Usage
+    Wait-ForKey
+    exit 0
+}
+
 # 先頭の引数がアクション名でなければサービス名とみなし、アクションは既定の up にする
 # （例: .\Start-Services_wsl2.ps1 mysql redis）。
 $KnownActions = @('up', 'down', 'ps', 'logs')

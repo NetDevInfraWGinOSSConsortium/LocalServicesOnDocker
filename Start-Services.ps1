@@ -16,11 +16,16 @@
     down  : docker compose down で停止する。
     ps    : コンテナの稼働状況を表示する。
     logs  : コンテナのログを表示する（Ctrl+C で終了）。
+    help  : 使い方（指定できるサービス名の一覧）を表示して終了する。
     省略できる（既定 up）。先頭の引数が上記以外ならサービス名とみなす。
 
 .PARAMETER Service
     対象とするサービス名。スペース区切りで複数指定できる。大文字小文字は区別しない。
     all を指定すると全サービス。**省略した場合は全サービスが対象**（従来どおりの動作）。
+
+.PARAMETER Help
+    使い方（指定できるサービス名の一覧）を表示して終了する。
+    引数なしは「全サービスを up」なので、ヘルプは help / -Help で明示的に要求する。
 
 .PARAMETER NoWait
     up 時に DB の準備完了待ちを行わない（起動のみ）。
@@ -52,6 +57,10 @@
 .EXAMPLE
     .\Start-Services.ps1 logs mysql
     mysql のログだけを表示する。
+
+.EXAMPLE
+    .\Start-Services.ps1 help
+    使い方と指定できるサービス名の一覧を表示する（-Help でも同じ）。
 #>
 [CmdletBinding()]
 param(
@@ -62,6 +71,8 @@ param(
 
     [Parameter(Position = 1, ValueFromRemainingArguments = $true)]
     [string[]]$Service,
+
+    [switch]$Help,
 
     [switch]$NoWait,
 
@@ -222,6 +233,27 @@ function Test-WindowsPort {
     finally { $client.Close() }
 }
 
+# --- ヘルプ部品 -------------------------------------------------------------
+function Show-ServiceList {
+    # 指定できるサービス名の一覧。Stop-Services.ps1 / Reboot-Services.ps1 の
+    # ヘルプからも同じものを使う（一覧が二重管理にならないようにするため）。
+    param([string]$AllNote = '上記すべて')
+    Write-Line "指定できるサービス名:" -Color Cyan
+    foreach ($name in $ServicePorts.Keys) {
+        Write-Line ("  {0,-10} localhost:{1}" -f $name, $ServicePorts[$name])
+    }
+    Write-Line ("  {0,-10} {1}" -f 'all', $AllNote)
+}
+
+# ヘルプ表示を要求する引数。-Help スイッチでも同じ。
+$HelpTokens = @('help', '--help', '/?', '?')
+
+function Test-HelpRequested {
+    # 引数のどこかにヘルプ要求のトークンがあれば $true。
+    param([string[]]$Names)
+    return (@($Names | Where-Object { $HelpTokens -contains $_ }).Count -gt 0)
+}
+
 # --- サービス名の解決 -------------------------------------------------------
 function Resolve-Targets {
     # 指定名を正規のサービス名へ解決する。all は全サービスへ展開し、重複は取り除く。
@@ -258,7 +290,7 @@ if ($AsLibrary) { return }
 # Reboot-Services.ps1 が自前の Show-Usage を定義しても衝突しない）。
 function Show-Usage {
     Write-Line ""
-    Write-Line "使い方: .\Start-Services.ps1 [up|down|ps|logs] [<サービス名> ...] [-NoWait] [-NoPause]" -Color Cyan
+    Write-Line "使い方: .\Start-Services.ps1 [up|down|ps|logs|help] [<サービス名> ...] [-NoWait] [-NoPause]" -Color Cyan
     Write-Line ""
     Write-Line "  アクションを省略すると up、サービス名を省略すると全サービスが対象になります。"
     Write-Line ""
@@ -267,22 +299,27 @@ function Show-Usage {
     Write-Line "  down        停止する"
     Write-Line "  ps          稼働状況を表示する"
     Write-Line "  logs        ログを表示する（Ctrl+C で終了）"
+    Write-Line "  help        この使い方を表示する（-Help でも可）"
     Write-Line ""
-    Write-Line "指定できるサービス名:" -Color Cyan
-    foreach ($name in $ServicePorts.Keys) {
-        Write-Line ("  {0,-10} localhost:{1}" -f $name, $ServicePorts[$name])
-    }
-    Write-Line ("  {0,-10} 上記すべて（省略時と同じ）" -f 'all')
+    Show-ServiceList -AllNote '上記すべて（省略時と同じ）'
     Write-Line ""
     Write-Line "例:" -Color Cyan
     Write-Line "  .\Start-Services.ps1"
     Write-Line "  .\Start-Services.ps1 mysql redis"
     Write-Line "  .\Start-Services.ps1 down oracle"
+    Write-Line "  .\Start-Services.ps1 help"
     Write-Line ""
     Write-Line "詳細は Get-Help .\Start-Services.ps1 -Full で参照できます。" -Color DarkGray
 }
 
 # --- 引数の解釈（本処理前に済ませ、問題があればヘルプを出して終了）--------------
+# 引数なしは「全サービスを up」なので、ヘルプは help / -Help で明示的に要求する。
+if ($Help -or (Test-HelpRequested -Names (@($Action) + @($Service)))) {
+    Show-Usage
+    Wait-ForKey
+    exit 0
+}
+
 # 先頭の引数がアクション名でなければサービス名とみなし、アクションは既定の up にする
 # （例: .\Start-Services.ps1 mysql redis）。
 $KnownActions = @('up', 'down', 'ps', 'logs')

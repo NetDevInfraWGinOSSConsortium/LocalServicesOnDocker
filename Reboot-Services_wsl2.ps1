@@ -88,11 +88,7 @@ function Show-Usage {
     Write-Line "  再起動するサービスをコマンドラインで指定します。"
     Write-Line "  サービス名を指定しない場合は、このヘルプを表示して終了します。"
     Write-Line ""
-    Write-Line "指定できるサービス名:" -Color Cyan
-    foreach ($name in $ServicePorts.Keys) {
-        Write-Line ("  {0,-10} localhost:{1}" -f $name, $ServicePorts[$name])
-    }
-    Write-Line ("  {0,-10} 上記すべて" -f 'all')
+    Show-ServiceList
     Write-Line ""
     Write-Line "オプション:" -Color Cyan
     Write-Line "  -Distro     使用する WSL ディストリビューション名（省略時は既定）。"
@@ -112,7 +108,8 @@ function Show-Usage {
 # Resolve-Targets（サービス名の解決）は Start-Services_wsl2.ps1 から取り込んだものを使う。
 
 # --- 引数の解釈（本処理前に済ませ、問題があればヘルプを出して終了）--------------
-if (-not $Service -or @($Service).Count -eq 0) {
+# 引数なしのほか、help / -Help でもヘルプを表示する（Start-Services_wsl2.ps1 と揃える）。
+if (-not $Service -or @($Service).Count -eq 0 -or (Test-HelpRequested -Names $Service)) {
     Show-Usage
     Wait-ForKey
     exit 0

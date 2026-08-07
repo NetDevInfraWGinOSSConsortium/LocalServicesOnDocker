@@ -85,8 +85,21 @@ common_link 作成 → `docker compose up -d` / `down`だけを実行する。
   `Reboot-Services*.ps1` だけは、省略時にヘルプを表示して終了する（再起動対象を明示させるため）。
 - 存在しない名前を指定した場合は、その名前を表示したうえでヘルプを出し、何もせずに終了する
   （一部だけ正しい場合も実行しない）。
-- 一覧はスクリプト側の定義（`Start-Services*.ps1` の `$ServicePorts`）から生成しているため、
-  ヘルプには常に最新の一覧が表示される。
+
+##### ヘルプの表示
+
+`Start-Services*.ps1` / `Stop-Services*.ps1` は引数なしが「全サービスが対象」なので、
+ヘルプは `help`（または `-Help`）で明示的に要求する。`Reboot-Services*.ps1` は引数なしでも
+ヘルプになるが、同じく `help` / `-Help` も受け付ける。
+```
+> .\Start-Services.ps1 help
+> .\Start-Services.ps1 -Help
+> .\Stop-Services.ps1 help
+> .\Reboot-Services.ps1
+```
+`help` の代わりに `--help` / `/?` / `?` でも同じ。表示される一覧はスクリプト側の定義
+（`Start-Services*.ps1` の `$ServicePorts`）から生成しているため、常に最新の内容になる。
+なお `Get-Help .\Start-Services.ps1 -Full` では、各パラメーターの詳しい説明を参照できる。
 
 #### Start-Services.ps1 から実行する
 （Rancher Desktop導入時 ＋ DB 初期化完了待ちをする場合）
@@ -126,6 +139,12 @@ common_link 作成 → `docker compose up -d` / `down`だけを実行する。
 > .\Start-Services.ps1 down oracle      ← oracle だけを停止・削除
 > .\Stop-Services.ps1 mysql redis       ← mysql と redis だけを停止
 > .\Start-Services.ps1 logs mysql       ← mysql のログだけを表示
+```
+
+[ヘルプ](#ヘルプの表示)は `help` アクション（または `-Help`）で表示する。
+```
+> .\Start-Services.ps1 help
+> .\Stop-Services.ps1 help
 ```
 
 主なオプション:
@@ -180,8 +199,10 @@ WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行�
 それぞれ `Start-Services.ps1` / `Start-Services_wsl2.ps1` の設定・判定処理をそのまま再利用する。
 
 **サービス名を指定しなかった場合は、ヘルプ（指定できるサービス名の一覧）を表示して終了する。**
+`help` / `-Help` でも同じ（`Start-Services.ps1` 等と揃えてある）。
 ```
 > .\Reboot-Services.ps1
+> .\Reboot-Services.ps1 help
 ```
 
 指定できるサービス名は [Start-Services.ps1 等と共通](#指定できるサービス名)。スペース区切りで複数指定でき、
@@ -212,13 +233,13 @@ WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行�
 - WSL2 版は処理の前にキープアライブを起動するため、VM がアイドル停止していてもそのまま実行できる。
 
 #### スクリプトの使い分け
-| スクリプト | Docker エンジン | サービス名の指定 | DB 初期化完了待ち | 主なオプション |
-|---|---|---|---|---|
-| `Start-Services.bat` / `Stop-Services.bat` | Rancher Desktop | できない（常に全部） | しない | — |
-| `Start-Services.ps1` / `Stop-Services.ps1` | Rancher Desktop | できる（省略時は全部） | する（`-NoWait` で省略可） | `-NoWait` `-NoPause` |
-| `Start-Services_wsl2.ps1` / `Stop-Services_wsl2.ps1` | WSL2 内の dockerd | できる（省略時は全部） | する | `-Distro` `-NoWait` `-NoPause` |
-| `Reboot-Services.ps1` | Rancher Desktop | できる（省略時はヘルプ） | する（指定サービスのみ） | `-Recreate` `-NoWait` `-NoPause` |
-| `Reboot-Services_wsl2.ps1` | WSL2 内の dockerd | できる（省略時はヘルプ） | する（指定サービスのみ） | `-Distro` `-Recreate` `-NoWait` `-NoPause` |
+| スクリプト | Docker エンジン | サービス名の指定 | ヘルプ | DB 初期化完了待ち | 主なオプション |
+|---|---|---|---|---|---|
+| `Start-Services.bat` / `Stop-Services.bat` | Rancher Desktop | できない（常に全部） | — | しない | — |
+| `Start-Services.ps1` / `Stop-Services.ps1` | Rancher Desktop | できる（省略時は全部） | `help` / `-Help` | する（`-NoWait` で省略可） | `-NoWait` `-NoPause` |
+| `Start-Services_wsl2.ps1` / `Stop-Services_wsl2.ps1` | WSL2 内の dockerd | できる（省略時は全部） | `help` / `-Help` | する | `-Distro` `-NoWait` `-NoPause` |
+| `Reboot-Services.ps1` | Rancher Desktop | できる（省略時はヘルプ） | 引数なし / `help` | する（指定サービスのみ） | `-Recreate` `-NoWait` `-NoPause` |
+| `Reboot-Services_wsl2.ps1` | WSL2 内の dockerd | できる（省略時はヘルプ） | 引数なし / `help` | する（指定サービスのみ） | `-Distro` `-Recreate` `-NoWait` `-NoPause` |
 
 - 手早く起動したい・ダブルクリックで済ませたい → `Start-Services.bat`
 - テスト前に DB が使える状態まで待ってから始めたい → `Start-Services.ps1`

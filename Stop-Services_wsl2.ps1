@@ -15,6 +15,10 @@
 .PARAMETER Distro
     使用する WSL ディストリビューション名。Start-Services.ps1 にそのまま渡される。
 
+.PARAMETER Help
+    使い方（指定できるサービス名の一覧）を表示して終了する。
+    引数なしは「全サービスを停止」なので、ヘルプは help / -Help で明示的に要求する。
+
 .EXAMPLE
     .\Stop-Services_wsl2.ps1
     全コンテナを停止し、キープアライブも解除する。
@@ -26,19 +30,57 @@
 .EXAMPLE
     .\Stop-Services_wsl2.ps1 -Distro Ubuntu-22.04
     指定ディストリビューション上のコンテナを停止する。
+
+.EXAMPLE
+    .\Stop-Services_wsl2.ps1 help
+    使い方と指定できるサービス名の一覧を表示する（-Help でも同じ）。
 #>
 [CmdletBinding()]
 param(
     [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
     [string[]]$Service,
 
-    [string]$Distro
+    [string]$Distro,
+
+    [switch]$Help
 )
 
 $ErrorActionPreference = 'Stop'
 
+# --- ヘルプ（引数なしは全サービス停止なので、help / -Help で明示的に要求する）----
+$HelpTokens = @('help', '--help', '/?', '?')
+if ($Help -or @($Service | Where-Object { $HelpTokens -contains $_ }).Count -gt 0) {
+    # 出力ヘルパ（Write-Line）とサービス名一覧（Show-ServiceList）を
+    # Start-Services_wsl2.ps1 から取り込む。-AsLibrary により本処理は走らない。
+    # 注: ドットソースは相手の param 変数も持ち込むため、自分の指定値を明示的に渡す。
+    $libArgs = @{ AsLibrary = $true; Service = $Service }
+    if ($PSBoundParameters.ContainsKey('Distro')) { $libArgs['Distro'] = $Distro }
+    . "$PSScriptRoot\Start-Services_wsl2.ps1" @libArgs
+    Write-Line ""
+    Write-Line "使い方: .\Stop-Services_wsl2.ps1 [<サービス名> ...] [-Distro <名前>]" -Color Cyan
+    Write-Line ""
+    Write-Line "  Start-Services_wsl2.ps1 down のショートカットです。"
+    Write-Line "  サービス名を省略すると全サービスを停止し、キープアライブも解除します。"
+    Write-Line "  サービス名を指定した場合は、残るコンテナのためキープアライブを維持します。"
+    Write-Line ""
+    Show-ServiceList -AllNote '上記すべて（省略時と同じ）'
+    Write-Line ""
+    Write-Line "オプション:" -Color Cyan
+    Write-Line "  -Distro     使用する WSL ディストリビューション名（省略時は既定）。"
+    Write-Line "  -Help       この使い方を表示する（help でも可）。"
+    Write-Line ""
+    Write-Line "例:" -Color Cyan
+    Write-Line "  .\Stop-Services_wsl2.ps1"
+    Write-Line "  .\Stop-Services_wsl2.ps1 mysql redis"
+    Write-Line "  .\Stop-Services_wsl2.ps1 -Distro Ubuntu-22.04"
+    Write-Line ""
+    Write-Line "詳細は Get-Help .\Stop-Services_wsl2.ps1 -Full で参照できます。" -Color DarkGray
+    Wait-ForKey
+    exit 0
+}
+
 # down 以外の引数（サービス名・-Distro 等）はそのまま Start-Services_wsl2.ps1 へ転送する。
-# サービス名の妥当性検査・ヘルプ表示も Start-Services_wsl2.ps1 側に任せる。
+# サービス名の妥当性検査も Start-Services_wsl2.ps1 側に任せる。
 $forward = @{}
 if ($Service) { $forward['Service'] = $Service }
 if ($PSBoundParameters.ContainsKey('Distro')) { $forward['Distro'] = $Distro }
