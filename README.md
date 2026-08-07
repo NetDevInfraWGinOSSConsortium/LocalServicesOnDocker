@@ -388,6 +388,9 @@ Oracle Database 23ai Free（`gvenzl/oracle-free:23-slim`）は、DB 作成済み
 ### テスト方法
 テストを行う場合は、あらかじめサービスを起動しておく（DB の初期化完了まで待ちたい場合は `Start-Services.ps1` を推奨）。
 
+起動スクリプト側（`*.ps1` / `*.bat`）を変更したときの回帰テストケースは
+[TESTCASES.md](TESTCASES.md) にまとめてある。
+
 #### dotnet
 ConsoleApp1.sln プロジェクトを実行する。
 
