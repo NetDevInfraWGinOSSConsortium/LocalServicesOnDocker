@@ -20,11 +20,17 @@
       ・Wait-DockerDaemon / Show-Usage / WSL 実行ヘルパ / キープアライブ
 
 .NOTES
-    Wait-Service と Ensure-Service は、compose コマンドの実行を Invoke-ComposeQuiet に
-    委ねている。各 Start-Services*.ps1 は、この関数を自分のエンジン向けに定義すること。
+    ここの関数は、compose コマンドの実行を次の 2 つに委ねている。
+    各 Start-Services*.ps1 は、これらを自分のエンジン向けに定義すること。
 
         function Invoke-ComposeQuiet {
             # docker compose の後ろに付く引数を受け取り、出力を捨てて終了コードを返す。
+            param([Parameter(Mandatory)][string[]]$CommandArgs)
+            ...
+        }
+
+        function Invoke-ComposeCapture {
+            # 同上。ただし標準出力を文字列で返す（終了コードは捨てる）。
             param([Parameter(Mandatory)][string[]]$CommandArgs)
             ...
         }
@@ -156,6 +162,39 @@ function Ensure-Service {
     }
     Write-Line " NG" -Color Red
     return $false
+}
+
+# --- up 失敗時の案内と後片付け ----------------------------------------------
+function Resolve-ComposeUpFailure {
+    # docker compose up が失敗したときに呼ぶ。
+    #  ① 公開ポートが既に埋まっていれば、その旨と原因の候補を示す。
+    #     Rancher Desktop の docker と WSL2 内の dockerd は同じ公開ポートを使うため、
+    #     もう一方が起動しているとポート競合で必ず失敗する（生の Docker エラーだけでは
+    #     原因が読み取れないので、ここで補足する）。
+    #  ② 起動できずに created のまま残ったコンテナを削除する。残しておくと稼働中でも
+    #     停止中でもない中途半端な状態が次回まで持ち越されるため。
+    param([Parameter(Mandatory)][string[]]$Targets)
+
+    $busy = @()
+    foreach ($svc in $Targets) {
+        if (-not $ServicePorts.Contains($svc)) { continue }
+        if (Test-WindowsPort -Port $ServicePorts[$svc] -TimeoutMs 500) {
+            $busy += ("{0}({1})" -f $svc, $ServicePorts[$svc])
+        }
+    }
+    if ($busy.Count -gt 0) {
+        Write-Line ""
+        Write-Line ("ヒント: 次のポートは既に使用されています: {0}" -f ($busy -join ', ')) -Color Yellow
+        Write-Line "        Rancher Desktop 版と WSL2 版は同じ公開ポートを使うため、同時には起動できません。" -Color Yellow
+        Write-Line "        もう一方を停止してから再実行してください（Stop-Services.ps1 / Stop-Services_wsl2.ps1）。" -Color Yellow
+    }
+
+    $out = Invoke-ComposeCapture -CommandArgs @('ps', '-a', '--status', 'created', '--format', '{{.Service}}')
+    $created = @($out -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -and ($Targets -contains $_) })
+    if ($created.Count -gt 0) {
+        Write-Line ("起動できなかったコンテナを片付けます: {0}" -f ($created -join ', ')) -Color DarkGray
+        Invoke-ComposeQuiet -CommandArgs (@('rm', '-sf') + $created) | Out-Null
+    }
 }
 
 # --- Windows(localhost) からの到達確認 --------------------------------------

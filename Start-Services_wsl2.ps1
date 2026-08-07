@@ -156,6 +156,12 @@ function Invoke-ComposeQuiet {
     return (Invoke-WslQuiet (@('docker', 'compose') + $CommandArgs))
 }
 
+function Invoke-ComposeCapture {
+    # 同上。ただし標準出力を文字列で返す（終了コードは捨てる）。
+    param([Parameter(Mandatory)][string[]]$CommandArgs)
+    return ((& wsl @wslBaseArgs --cd $wslPath docker compose @CommandArgs 2>$null) -join "`n")
+}
+
 # --- キープアライブ（VM のアイドル停止を防ぐ）------------------------------
 function Start-KeepAlive {
     # Windows 側に常駐する wsl.exe プロセス（sleep）を 1 つ起動する。
@@ -241,10 +247,15 @@ if ($Help -or (Test-HelpRequested -Names (@($Action) + @($Service)))) {
     exit 0
 }
 
+# 空文字列・空白のみは「アクション未指定」とみなす。バッチから未設定の変数
+# （例: %SERVICES%）が渡ると "" が来るため、ここで既定の up に寄せないと
+# switch がどの case にも一致せず、何もせず成功終了してしまう。
+if ([string]::IsNullOrWhiteSpace($Action)) { $Action = 'up' }
+
 # 先頭の引数がアクション名でなければサービス名とみなし、アクションは既定の up にする
 # （例: .\Start-Services_wsl2.ps1 mysql redis）。
 $KnownActions = @('up', 'down', 'ps', 'logs')
-if ($Action -and $KnownActions -notcontains $Action) {
+if ($KnownActions -notcontains $Action) {
     $Service = @($Action) + @($Service)
     $Action = 'up'
 }
@@ -268,6 +279,7 @@ else {
     $targets = @($ServicePorts.Keys)
 }
 $isAllServices = ($targets.Count -eq $ServicePorts.Count)
+$exitCode = 0
 # 全サービスが対象なら compose にサービス名を渡さず、従来とまったく同じコマンドにする。
 #  ・down はサービスを指定するとプロジェクトのネットワークが削除されない。
 #  ・compose ファイルにここで管理していないサービスが増えても取りこぼさない。
@@ -301,7 +313,10 @@ switch ($Action) {
 
         Write-Line "コンテナを起動します (docker compose up -d)..." -Color Cyan
         Invoke-Wsl (@('docker', 'compose', 'up', '-d') + $composeTargets)
-        if ($script:LastWslExit -ne 0) { throw "docker compose up に失敗しました。" }
+        if ($script:LastWslExit -ne 0) {
+            Resolve-ComposeUpFailure -Targets $targets
+            throw "docker compose up に失敗しました。"
+        }
 
         if (-not $NoWait) {
             Write-Line ""
@@ -368,6 +383,15 @@ switch ($Action) {
     }
 }
 }
+catch {
+    # throw をそのまま外へ出すと PowerShell の例外ダンプ（CategoryInfo 等）が
+    # 表示されて読みにくいため、メッセージだけを示して終了コードで伝える。
+    Write-Line ""
+    Write-Line ("エラー: {0}" -f $_.Exception.Message) -Color Red
+    $exitCode = 1
+}
 finally {
     Wait-ForKey
 }
+
+exit $exitCode

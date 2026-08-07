@@ -19,6 +19,9 @@
     使い方（指定できるサービス名の一覧）を表示して終了する。
     引数なしは「全サービスを停止」なので、ヘルプは help / -Help で明示的に要求する。
 
+.PARAMETER NoPause
+    完了時のキー入力待ち（pause 相当）を行わない。Start-Services_wsl2.ps1 に転送される。
+
 .EXAMPLE
     .\Stop-Services_wsl2.ps1
     全コンテナを停止し、キープアライブも解除する。
@@ -42,7 +45,9 @@ param(
 
     [string]$Distro,
 
-    [switch]$Help
+    [switch]$Help,
+
+    [switch]$NoPause
 )
 
 $ErrorActionPreference = 'Stop'
@@ -58,7 +63,7 @@ if (-not (Test-Path -LiteralPath $commonPath)) {
 # --- ヘルプ（引数なしは全サービス停止なので、help / -Help で明示的に要求する）----
 if ($Help -or (Test-HelpRequested -Names $Service)) {
     Write-Line ""
-    Write-Line "使い方: .\Stop-Services_wsl2.ps1 [<サービス名> ...] [-Distro <名前>]" -Color Cyan
+    Write-Line "使い方: .\Stop-Services_wsl2.ps1 [<サービス名> ...] [-Distro <名前>] [-NoPause]" -Color Cyan
     Write-Line ""
     Write-Line "  Start-Services_wsl2.ps1 down のショートカットです。"
     Write-Line "  サービス名を省略すると全サービスを停止し、キープアライブも解除します。"
@@ -68,6 +73,7 @@ if ($Help -or (Test-HelpRequested -Names $Service)) {
     Write-Line ""
     Write-Line "オプション:" -Color Cyan
     Write-Line "  -Distro     使用する WSL ディストリビューション名（省略時は既定）。"
+    Write-Line "  -NoPause    終了時のキー入力待ちを行わない。"
     Write-Line "  -Help       この使い方を表示する（help でも可）。"
     Write-Line ""
     Write-Line "例:" -Color Cyan
@@ -85,6 +91,7 @@ if ($Help -or (Test-HelpRequested -Names $Service)) {
 $forward = @{}
 if ($Service) { $forward['Service'] = $Service }
 if ($PSBoundParameters.ContainsKey('Distro')) { $forward['Distro'] = $Distro }
+if ($NoPause) { $forward['NoPause'] = $true }
 
 & "$PSScriptRoot\Start-Services_wsl2.ps1" down @forward
 

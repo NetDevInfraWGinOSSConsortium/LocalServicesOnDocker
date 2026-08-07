@@ -133,6 +133,8 @@ if ($targets.Count -eq 0) {
 }
 
 # ===========================================================================
+$exitCode = 0
+
 try {
     Write-Line "対象: $scriptDir" -Color DarkGray
     Write-Line "WSL パス: $wslPath" -Color DarkGray
@@ -154,7 +156,10 @@ try {
         Write-Line "コンテナを作り直します (docker compose rm -sfv → up -d)..." -Color Cyan
         Invoke-WslQuiet (@('docker', 'compose', 'rm', '-sfv') + $targets) | Out-Null
         Invoke-Wsl (@('docker', 'compose', 'up', '-d') + $targets)
-        if ($script:LastWslExit -ne 0) { throw "docker compose up に失敗しました。" }
+        if ($script:LastWslExit -ne 0) {
+            Resolve-ComposeUpFailure -Targets $targets
+            throw "docker compose up に失敗しました。"
+        }
     }
     else {
         # docker compose restart は対象コンテナが未作成でも「何もせず成功」してしまう。
@@ -176,7 +181,10 @@ try {
         if ($missing.Count -gt 0) {
             Write-Line ("コンテナが未作成のため起動します (docker compose up -d): {0}" -f ($missing -join ', ')) -Color Yellow
             Invoke-Wsl (@('docker', 'compose', 'up', '-d') + $missing)
-            if ($script:LastWslExit -ne 0) { throw "docker compose up に失敗しました。" }
+            if ($script:LastWslExit -ne 0) {
+                Resolve-ComposeUpFailure -Targets $missing
+                throw "docker compose up に失敗しました。"
+            }
         }
     }
 
@@ -223,6 +231,15 @@ try {
     Write-Line "再起動しました。稼働状況:" -Color Green
     Invoke-Wsl (@('docker', 'compose', 'ps') + $targets)
 }
+catch {
+    # throw をそのまま外へ出すと PowerShell の例外ダンプが表示されて読みにくいため、
+    # メッセージだけを示して終了コードで伝える。
+    Write-Line ""
+    Write-Line ("エラー: {0}" -f $_.Exception.Message) -Color Red
+    $exitCode = 1
+}
 finally {
     Wait-ForKey
 }
+
+exit $exitCode

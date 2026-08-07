@@ -108,6 +108,12 @@ function Invoke-ComposeQuiet {
     return $LASTEXITCODE
 }
 
+function Invoke-ComposeCapture {
+    # 同上。ただし標準出力を文字列で返す（終了コードは捨てる）。
+    param([Parameter(Mandatory)][string[]]$CommandArgs)
+    return ((& docker compose @CommandArgs 2>$null) -join "`n")
+}
+
 # --- Docker デーモンの準備待ち（コールドブート直後対応）---------------------
 function Wait-DockerDaemon {
     for ($i = 0; $i -lt 30; $i++) {
@@ -157,10 +163,15 @@ if ($Help -or (Test-HelpRequested -Names (@($Action) + @($Service)))) {
     exit 0
 }
 
+# 空文字列・空白のみは「アクション未指定」とみなす。バッチから未設定の変数
+# （例: %SERVICES%）が渡ると "" が来るため、ここで既定の up に寄せないと
+# switch がどの case にも一致せず、何もせず成功終了してしまう。
+if ([string]::IsNullOrWhiteSpace($Action)) { $Action = 'up' }
+
 # 先頭の引数がアクション名でなければサービス名とみなし、アクションは既定の up にする
 # （例: .\Start-Services.ps1 mysql redis）。
 $KnownActions = @('up', 'down', 'ps', 'logs')
-if ($Action -and $KnownActions -notcontains $Action) {
+if ($KnownActions -notcontains $Action) {
     $Service = @($Action) + @($Service)
     $Action = 'up'
 }
@@ -184,6 +195,7 @@ else {
     $targets = @($ServicePorts.Keys)
 }
 $isAllServices = ($targets.Count -eq $ServicePorts.Count)
+$exitCode = 0
 # 全サービスが対象なら compose にサービス名を渡さず、従来とまったく同じコマンドにする。
 #  ・down はサービスを指定するとプロジェクトのネットワークが削除されない。
 #  ・compose ファイルにここで管理していないサービスが増えても取りこぼさない。
@@ -217,7 +229,10 @@ try {
 
             Write-Line "コンテナを起動します (docker compose up -d)..." -Color Cyan
             & docker compose up -d @composeTargets
-            if ($LASTEXITCODE -ne 0) { throw "docker compose up に失敗しました。" }
+            if ($LASTEXITCODE -ne 0) {
+                Resolve-ComposeUpFailure -Targets $targets
+                throw "docker compose up に失敗しました。"
+            }
 
             if (-not $NoWait) {
                 Write-Line ""
@@ -265,7 +280,16 @@ try {
         }
     }
 }
+catch {
+    # throw をそのまま外へ出すと PowerShell の例外ダンプ（CategoryInfo 等）が
+    # 表示されて読みにくいため、メッセージだけを示して終了コードで伝える。
+    Write-Line ""
+    Write-Line ("エラー: {0}" -f $_.Exception.Message) -Color Red
+    $exitCode = 1
+}
 finally {
     Pop-Location -ErrorAction SilentlyContinue
     Wait-ForKey
 }
+
+exit $exitCode
