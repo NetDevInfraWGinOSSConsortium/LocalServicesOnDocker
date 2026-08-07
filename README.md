@@ -234,6 +234,49 @@ WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行�
   `localhost:<port>` への到達確認を、指定したサービスについてのみ行う。
 - WSL2 版は処理の前にキープアライブを起動するため、VM がアイドル停止していてもそのまま実行できる。
 
+#### Show-Services.ps1 で状態だけ見る
+（起動も停止もせず、今どうなっているかを確認したい場合）
+
+コンテナの状態・DB の準備完了・`localhost` からの到達可否をまとめて表示する**読み取り専用**の
+スクリプト。起動・停止・再起動・作り直しは一切行わない。
+`Show-Services.ps1` が Rancher Desktop 版、`Show-Services_wsl2.ps1` が WSL2 版。
+
+```
+> .\Show-Services.ps1
+> .\Show-Services.ps1 mysql redis   ← 指定したサービスだけ
+> .\Show-Services.ps1 -Quick        ← 準備完了判定を省いて手早く
+```
+
+```
+ネットワーク 'common_link': あり
+
+  SERVICE    CONTAINER  READY  PORT   LOCALHOST
+  -------    ---------  -----  ----   ---------
+  redis      running    OK     6379   OK
+  mysql      exited     NG     3306   NG
+  postgres   -          NG     5432   NG
+
+利用できないサービス: mysql, postgres
+  起動するには: .\Start-Services.ps1 mysql postgres
+  作り直すには: .\Reboot-Services.ps1 mysql postgres -Recreate
+```
+
+`Start-Services.ps1 ps`（＝`docker compose ps`）との違いは次のとおり。
+
+- **READY** … `Start-Services.ps1` と同じ判定テーブル（`$ReadyChecks`）でコンテナ内へ疎通確認する。
+  「コンテナは running だが DB はまだ初期化中」を見分けられる。ただし**待たないし作り直さない**
+  （`Ensure-Service` ではなく 1 回だけの判定）。`-Quick` で省略できる。
+- **CONTAINER** … `-` はコンテナが未作成であることを示す。
+- **LOCALHOST** … Windows 側から公開ポートへ実際に接続できるかを確認する。
+- 対象がすべて利用可能なら**終了コード 0**、そうでなければ 1。テストの前置きに使える。
+
+補足:
+- WSL2 版は、**VM が停止していても起こさない**。停止中はその旨だけを表示して終了する
+  （状態を見るだけのつもりが VM を起動すると、前回のコンテナが復帰して Rancher Desktop 版と
+  ポート競合しかねないため）。判定は既定（または `-Distro` で指定した）ディストリビューションの
+  状態を見る。`rancher-desktop` は Rancher Desktop が常時動かしているので数に入れない。
+- WSL2 版はキープアライブの有無も表示する。
+
 #### oretoku-set.bat から決め打ちで起動する
 （いつも同じサービスだけ使う場合）
 
@@ -273,6 +316,7 @@ set "DISTRO=Ubuntu-22.04"
 | `Start-Services_wsl2.ps1` / `Stop-Services_wsl2.ps1` | WSL2 内の dockerd | できる（省略時は全部） | `help` / `-Help` | する | `-Distro` `-NoWait` `-NoPause` |
 | `Reboot-Services.ps1` | Rancher Desktop | できる（省略時はヘルプ） | 引数なし / `help` | する（指定サービスのみ） | `-Recreate` `-NoWait` `-NoPause` |
 | `Reboot-Services_wsl2.ps1` | WSL2 内の dockerd | できる（省略時はヘルプ） | 引数なし / `help` | する（指定サービスのみ） | `-Distro` `-Recreate` `-NoWait` `-NoPause` |
+| `Show-Services.ps1` / `Show-Services_wsl2.ps1` | 両対応（別ファイル） | できる（省略時は全部） | `help` / `-Help` | しない（1 回だけ判定） | `-Quick` `-Distro` `-NoPause` |
 | `oretoku-set.bat` / `oretoku-set_wsl2.bat` | 上記 `Start-Services*.ps1` に委譲 | ファイル内の `SERVICES` で固定 | — | する | （ファイル内で編集） |
 
 - 手早く起動したい・ダブルクリックで済ませたい → `Start-Services.bat`

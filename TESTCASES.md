@@ -74,6 +74,26 @@
 | C09 | リポジトリ外から `oretoku-set.bat` をフルパス実行 | exit 0（`%~dp0` が効いている） |
 | C10 | `.bat` 4 本の**非 ASCII バイト数** | すべて 0（`chcp 65001` で cmd.exe がパースに失敗するため） |
 
+## S. 状態表示（`Show-Services*.ps1`）
+
+**読み取り専用であること**が最重要の性質なので、毎回「実行前後でコンテナ集合が変わらない」ことを確認する。
+
+| # | 事前 | コマンド | 期待 |
+|---|---|---|---|
+| S01 | 任意 | `Show-Services.ps1 help -NoPause` / `-Help` / `bogus` | exit 0 / 0 / 1・**コンテナ集合が不変** |
+| S02 | 全稼働 | `Show-Services.ps1 -NoPause` | exit 0・6 行すべて `running / OK / OK`・`6 サービスすべて利用可能です。` |
+| S03 | 全稼働 | `Show-Services.ps1 mysql redis -NoPause` | 表示は 2 行だけ |
+| S04 | 全稼働 | `Show-Services.ps1 -Quick -NoPause` | `READY` 列がすべて `-`・**判定を行わない分だけ速い**（実測 7.7 秒 → 2.6 秒） |
+| S05 | `docker compose stop mysql` と<br>`docker compose down postgres` 済 | `Show-Services.ps1 -NoPause` | exit 1・mysql=`exited`／postgres=`-`・`利用できないサービス: mysql, postgres` と復旧コマンドの案内。<br>**実行後もコンテナ集合が不変**（起動も削除もしない） |
+| S06 | 対象ディストロが停止中 | `Show-Services_wsl2.ps1 -NoPause` | exit 1・`… は停止しています（Stopped）。`・**実行後も VM が Stopped のまま**（起こさない） |
+| S07 | 対象ディストロが稼働中 | `Show-Services_wsl2.ps1 -NoPause` | キープアライブの有無＋一覧を表示 |
+| S08 | 任意 | `Show-Services_wsl2.ps1 -Distro NoSuchDistro -NoPause` | exit 1・`… が見つかりません。` |
+
+S06 は退行しやすい。**「稼働中のディストロが 1 つでもあるか」で判定してはいけない**
+（Rancher Desktop が `rancher-desktop` ディストロを常時動かしているため必ず「稼働中」になり、
+その後の `wsl` 実行で対象 VM を起こしてしまう）。既定または `-Distro` で指定したディストロの
+状態だけを見ること。確認は `wsl -l -v` の出力で行う。
+
 ## D. WSL2 版
 
 WSL2 内の dockerd が必要。**Rancher Desktop 側を停止してから**実行する（公開ポートが同じ）。
@@ -131,9 +151,9 @@ WSL2 内の dockerd が必要。**Rancher Desktop 側を停止してから**実�
 | F02 | `powershell -ExecutionPolicy Bypass -File .\Start-Services.ps1 ps` | exit 0（README 記載の回避策） |
 | F03 | `-NoPause` **なし**＋標準入力リダイレクト | **ハングせず終了**し、`続行するには…` を出力しない |
 | F04 | `Services.Common.ps1` を直接実行 | exit 0・**出力 0 行**・副作用なし（ドットソース専用） |
-| F05 | `Services.Common.ps1` を退避して 6 本を実行 | **6 本すべて** exit 1・`共通部品が見つかりません: <パス>` |
-| F06 | `Get-Help` で 6 本の `-NoPause` を確認 | 6 本すべてに存在する |
-| F07 | `.ps1` 7 本の構文解析と BOM | parse OK・**BOM がすべて付いている** |
+| F05 | `Services.Common.ps1` を退避して 8 本を実行 | **8 本すべて** exit 1・`共通部品が見つかりません: <パス>` |
+| F06 | `Get-Help` で 8 本の `-NoPause` を確認 | 8 本すべてに存在する |
+| F07 | `.ps1` 9 本の構文解析と BOM | parse OK・**BOM がすべて付いている** |
 
 ## G. 準備完了判定そのものの判別力
 
