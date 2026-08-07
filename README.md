@@ -64,6 +64,30 @@ common_link 作成 → `docker compose up -d` / `down`だけを実行する。
 - `Start-Services.ps1` のような DB 準備完了待ちは行わない（起動のみ）。SQL Server の Northwind など
   初期データのロードには起動後さらに数十秒かかるため、DB 接続テストは少し待ってから開始すると安定する。
 
+#### 指定できるサービス名
+（PowerShell 版スクリプト共通。`.bat` は対象外）
+
+`Start-Services*.ps1` / `Stop-Services*.ps1` / `Reboot-Services*.ps1` は、対象とするサービスを
+コマンドラインで指定できる。指定できるのは `docker-compose.yml` のサービス名と同じ次の 6 つ（＋ `all`）。
+
+| サービス名 | DB | 公開ポート | イメージ |
+|---|---|---|---|
+| `redis` | Redis | 6379 | `redis` |
+| `mongo` | MongoDB | 27017 | `mongo` |
+| `mysql` | MySQL | 3306 | `mysql` |
+| `postgres` | PostgreSQL | 5432 | `postgres` |
+| `sqlserver` | SQL Server 2022 | 1433 | `mcr.microsoft.com/mssql/server:2022-latest` |
+| `oracle` | Oracle Database 23ai Free | 1521 | `gvenzl/oracle-free:23-slim` |
+| `all` | 上記すべて | — | — |
+
+- スペース区切りで複数指定でき、大文字小文字は区別しない（`MySQL` でも可）。同じ名前を重複指定しても 1 回だけ処理される。
+- **`Start-Services*.ps1` / `Stop-Services*.ps1` はサービス名を省略すると全サービスが対象**（従来どおりの動作）。
+  `Reboot-Services*.ps1` だけは、省略時にヘルプを表示して終了する（再起動対象を明示させるため）。
+- 存在しない名前を指定した場合は、その名前を表示したうえでヘルプを出し、何もせずに終了する
+  （一部だけ正しい場合も実行しない）。
+- 一覧はスクリプト側の定義（`Start-Services*.ps1` の `$ServicePorts`）から生成しているため、
+  ヘルプには常に最新の一覧が表示される。
+
 #### Start-Services.ps1 から実行する
 （Rancher Desktop導入時 ＋ DB 初期化完了待ちをする場合）
 
@@ -94,6 +118,16 @@ common_link 作成 → `docker compose up -d` / `down`だけを実行する。
 > .\Start-Services.ps1 logs
 ```
 
+いずれのアクションも、後ろに[サービス名](#指定できるサービス名)を並べるとそのサービスだけが対象になる。
+アクション（`up` / `down` / `ps` / `logs`）を省略した場合は `up` とみなすため、サービス名だけを渡してもよい。
+```
+> .\Start-Services.ps1 mysql redis      ← mysql と redis だけを起動（up 省略）
+> .\Start-Services.ps1 up mysql redis   ← 同上
+> .\Start-Services.ps1 down oracle      ← oracle だけを停止・削除
+> .\Stop-Services.ps1 mysql redis       ← mysql と redis だけを停止
+> .\Start-Services.ps1 logs mysql       ← mysql のログだけを表示
+```
+
 主なオプション:
 - `-NoWait` : DB の初期化完了待ちを省略して起動のみ行う。
 - `-NoPause`: 完了時のキー入力待ち（`Start-Services.bat` の `pause` 相当）を行わない。
@@ -114,13 +148,18 @@ PowerShell の実行ポリシーでブロックされる場合は、以下のよ
 （WSL2 内の Docker で実行 + DB 初期化完了待ちをする場合）
 
 Rancher Desktop 導入以前の、**WSL2 内にインストールした Docker** を対象とする版。
-基本的な使い方は `Start-Services.ps1` と同じ（`up` / `down` / `ps` / `logs`、`-NoWait` / `-NoPause`）で、
-加えて WSL ディストリビューションを `-Distro` で指定できる。
+基本的な使い方は `Start-Services.ps1` と同じ（`up` / `down` / `ps` / `logs`、[サービス名](#指定できるサービス名)の指定、
+`-NoWait` / `-NoPause`）で、加えて WSL ディストリビューションを `-Distro` で指定できる。
 ```
 > .\Start-Services_wsl2.ps1
 > .\Start-Services_wsl2.ps1 up -Distro Ubuntu-22.04
+> .\Start-Services_wsl2.ps1 mysql redis
 > .\Stop-Services_wsl2.ps1
+> .\Stop-Services_wsl2.ps1 mysql redis
 ```
+
+ただしキープアライブの扱いだけは対象範囲で変わる。`down` でサービス名を指定した場合は、
+**残るコンテナのためキープアライブを解除しない**（全サービスを停止したときだけ解除する）。
 
 WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行っている。
 
@@ -145,7 +184,8 @@ WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行�
 > .\Reboot-Services.ps1
 ```
 
-サービス名はスペース区切りで複数指定でき、大文字小文字は区別しない。`all` で全サービスを対象にする。
+指定できるサービス名は [Start-Services.ps1 等と共通](#指定できるサービス名)。スペース区切りで複数指定でき、
+大文字小文字は区別しない。`all` で全サービスを対象にする。
 ```
 > .\Reboot-Services.ps1 mysql
 > .\Reboot-Services.ps1 mysql redis
@@ -172,13 +212,13 @@ WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行�
 - WSL2 版は処理の前にキープアライブを起動するため、VM がアイドル停止していてもそのまま実行できる。
 
 #### スクリプトの使い分け
-| スクリプト | Docker エンジン | DB 初期化完了待ち | 主なオプション |
-|---|---|---|---|
-| `Start-Services.bat` / `Stop-Services.bat` | Rancher Desktop | しない | — |
-| `Start-Services.ps1` / `Stop-Services.ps1` | Rancher Desktop | する（`-NoWait` で省略可） | `-NoWait` `-NoPause` |
-| `Start-Services_wsl2.ps1` / `Stop-Services_wsl2.ps1` | WSL2 内の dockerd | する | `-Distro` `-NoWait` `-NoPause` |
-| `Reboot-Services.ps1` | Rancher Desktop | する（指定サービスのみ） | `-Recreate` `-NoWait` `-NoPause` |
-| `Reboot-Services_wsl2.ps1` | WSL2 内の dockerd | する（指定サービスのみ） | `-Distro` `-Recreate` `-NoWait` `-NoPause` |
+| スクリプト | Docker エンジン | サービス名の指定 | DB 初期化完了待ち | 主なオプション |
+|---|---|---|---|---|
+| `Start-Services.bat` / `Stop-Services.bat` | Rancher Desktop | できない（常に全部） | しない | — |
+| `Start-Services.ps1` / `Stop-Services.ps1` | Rancher Desktop | できる（省略時は全部） | する（`-NoWait` で省略可） | `-NoWait` `-NoPause` |
+| `Start-Services_wsl2.ps1` / `Stop-Services_wsl2.ps1` | WSL2 内の dockerd | できる（省略時は全部） | する | `-Distro` `-NoWait` `-NoPause` |
+| `Reboot-Services.ps1` | Rancher Desktop | できる（省略時はヘルプ） | する（指定サービスのみ） | `-Recreate` `-NoWait` `-NoPause` |
+| `Reboot-Services_wsl2.ps1` | WSL2 内の dockerd | できる（省略時はヘルプ） | する（指定サービスのみ） | `-Distro` `-Recreate` `-NoWait` `-NoPause` |
 
 - 手早く起動したい・ダブルクリックで済ませたい → `Start-Services.bat`
 - テスト前に DB が使える状態まで待ってから始めたい → `Start-Services.ps1`
@@ -238,10 +278,13 @@ Oracle Database 23ai Free（`gvenzl/oracle-free:23-slim`）は、DB 作成済み
 
 初期化完了待ちが不要なら `-NoWait` を付与する（起動のみ）。
 
-`Reboot-Services.ps1` / `Reboot-Services_wsl2.ps1` は、この判定テーブルと待機・自動復旧処理を
-`Start-Services.ps1` / `Start-Services_wsl2.ps1` からドットソース（内部用スイッチ `-AsLibrary`）で
-再利用しており、指定されたサービスに対して同じ判定を行う。判定内容が二重管理にならないようにするため、
-接続情報やタイムアウトを変更する場合は `Start-Services*.ps1` 側だけを直せばよい。
+サービス名を指定した場合は、**指定したサービスについてのみ**この待機と到達確認を行う。
+
+`Reboot-Services.ps1` / `Reboot-Services_wsl2.ps1` は、この判定テーブルと待機・自動復旧処理、
+およびサービス名の解決処理を `Start-Services.ps1` / `Start-Services_wsl2.ps1` からドットソース
+（内部用スイッチ `-AsLibrary`）で再利用しており、指定されたサービスに対して同じ判定を行う。
+判定内容が二重管理にならないようにするため、接続情報・タイムアウト・サービス名の一覧を変更する場合は
+`Start-Services*.ps1` 側だけを直せばよい。
 
 ### テスト方法
 テストを行う場合は、あらかじめサービスを起動しておく（DB の初期化完了まで待ちたい場合は `Start-Services.ps1` を推奨）。

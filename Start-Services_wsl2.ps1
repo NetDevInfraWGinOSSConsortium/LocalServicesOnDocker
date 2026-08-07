@@ -21,6 +21,12 @@
     down  : docker compose down で停止し、キープアライブも解除する。
     ps    : コンテナの稼働状況を表示する。
     logs  : コンテナのログを表示する（Ctrl+C で終了）。
+    省略できる（既定 up）。先頭の引数が上記以外ならサービス名とみなす。
+
+.PARAMETER Service
+    対象とするサービス名。スペース区切りで複数指定できる。大文字小文字は区別しない。
+    all を指定すると全サービス。**省略した場合は全サービスが対象**（従来どおりの動作）。
+    down でサービスを指定した場合は、残りのコンテナのためキープアライブを解除しない。
 
 .PARAMETER Distro
     使用する WSL ディストリビューション名。省略時は既定のディストリビューションを使用する。
@@ -43,12 +49,24 @@
 .EXAMPLE
     .\Start-Services.ps1 down
     コンテナを停止する。
+
+.EXAMPLE
+    .\Start-Services_wsl2.ps1 mysql redis
+    mysql と redis だけを起動し、準備完了まで待つ（アクション省略＝up）。
+
+.EXAMPLE
+    .\Start-Services_wsl2.ps1 down oracle
+    oracle だけを停止・削除する（キープアライブは維持）。
 #>
 [CmdletBinding()]
 param(
+    # アクション名以外も受け取れるよう ValidateSet は付けず、本処理側で判定する
+    # （先頭がアクション名でなければサービス名とみなすため）。
     [Parameter(Position = 0)]
-    [ValidateSet('up', 'down', 'ps', 'logs')]
     [string]$Action = 'up',
+
+    [Parameter(Position = 1, ValueFromRemainingArguments = $true)]
+    [string[]]$Service,
 
     [string]$Distro,
 
@@ -277,6 +295,33 @@ function Test-WindowsPort {
     finally { $client.Close() }
 }
 
+# --- サービス名の解決 -------------------------------------------------------
+function Resolve-Targets {
+    # 指定名を正規のサービス名へ解決する。all は全サービスへ展開し、重複は取り除く。
+    # 未知の名前は $script:UnknownNames へ集める（呼び出し側で確認する）。
+    # Reboot-Services_wsl2.ps1 からもドットソースで再利用する。
+    param([string[]]$Names)
+    $known = @($ServicePorts.Keys)
+    $resolved = @()
+    $script:UnknownNames = @()
+    foreach ($name in $Names) {
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        if ($name -eq 'all') {
+            foreach ($k in $known) { if ($resolved -notcontains $k) { $resolved += $k } }
+            continue
+        }
+        # -eq は既定で大文字小文字を区別しないため、入力の表記ゆれを正規名へ寄せられる。
+        $match = @($known | Where-Object { $_ -eq $name })
+        if ($match.Count -gt 0) {
+            if ($resolved -notcontains $match[0]) { $resolved += $match[0] }
+        }
+        else {
+            $script:UnknownNames += $name
+        }
+    }
+    return $resolved
+}
+
 # --- pause（Start-Services.bat の pause 相当）-------------------------------
 function Wait-ForKey {
     # ダブルクリック起動時にウィンドウが即閉じせず、出力やエラーを読めるよう、
@@ -297,9 +342,75 @@ function Wait-ForKey {
 # だけを呼び出し元のスコープへ提供し、本処理は行わずに戻る。
 if ($AsLibrary) { return }
 
+# 以降はドットソース時には実行されない（Show-Usage も呼び出し元へは渡らないため、
+# Reboot-Services_wsl2.ps1 が自前の Show-Usage を定義しても衝突しない）。
+function Show-Usage {
+    Write-Line ""
+    Write-Line "使い方: .\Start-Services_wsl2.ps1 [up|down|ps|logs] [<サービス名> ...] [-Distro <名前>] [-NoWait] [-NoPause]" -Color Cyan
+    Write-Line ""
+    Write-Line "  アクションを省略すると up、サービス名を省略すると全サービスが対象になります。"
+    Write-Line ""
+    Write-Line "アクション:" -Color Cyan
+    Write-Line "  up          起動し、DB の準備完了まで待つ（既定）"
+    Write-Line "  down        停止する（全サービスのときはキープアライブも解除）"
+    Write-Line "  ps          稼働状況を表示する"
+    Write-Line "  logs        ログを表示する（Ctrl+C で終了）"
+    Write-Line ""
+    Write-Line "指定できるサービス名:" -Color Cyan
+    foreach ($name in $ServicePorts.Keys) {
+        Write-Line ("  {0,-10} localhost:{1}" -f $name, $ServicePorts[$name])
+    }
+    Write-Line ("  {0,-10} 上記すべて（省略時と同じ）" -f 'all')
+    Write-Line ""
+    Write-Line "例:" -Color Cyan
+    Write-Line "  .\Start-Services_wsl2.ps1"
+    Write-Line "  .\Start-Services_wsl2.ps1 mysql redis"
+    Write-Line "  .\Start-Services_wsl2.ps1 down oracle"
+    Write-Line ""
+    Write-Line "詳細は Get-Help .\Start-Services_wsl2.ps1 -Full で参照できます。" -Color DarkGray
+}
+
+# --- 引数の解釈（本処理前に済ませ、問題があればヘルプを出して終了）--------------
+# 先頭の引数がアクション名でなければサービス名とみなし、アクションは既定の up にする
+# （例: .\Start-Services_wsl2.ps1 mysql redis）。
+$KnownActions = @('up', 'down', 'ps', 'logs')
+if ($Action -and $KnownActions -notcontains $Action) {
+    $Service = @($Action) + @($Service)
+    $Action = 'up'
+}
+
+if ($Service -and @($Service).Count -gt 0) {
+    $targets = @(Resolve-Targets -Names $Service)
+    if ($script:UnknownNames.Count -gt 0) {
+        Write-Line ("不明なアクション名／サービス名です: {0}" -f ($script:UnknownNames -join ', ')) -Color Red
+        Show-Usage
+        Wait-ForKey
+        exit 1
+    }
+    if ($targets.Count -eq 0) {
+        Show-Usage
+        Wait-ForKey
+        exit 1
+    }
+}
+else {
+    # サービス名の指定なし＝全サービスが対象（従来どおりの動作）。
+    $targets = @($ServicePorts.Keys)
+}
+$isAllServices = ($targets.Count -eq $ServicePorts.Count)
+# 全サービスが対象なら compose にサービス名を渡さず、従来とまったく同じコマンドにする。
+#  ・down はサービスを指定するとプロジェクトのネットワークが削除されない。
+#  ・compose ファイルにここで管理していないサービスが増えても取りこぼさない。
+# 注: if 式の結果を代入すると 1 要素の配列が文字列へ潰れてしまうため、配列のまま代入する。
+[string[]]$composeTargets = @()
+if (-not $isAllServices) { $composeTargets = @($targets) }
+
 try {
 Write-Line "対象: $scriptDir" -Color DarkGray
 Write-Line "WSL パス: $wslPath" -Color DarkGray
+if (-not $isAllServices) {
+    Write-Line ("対象サービス: {0}" -f ($targets -join ', ')) -Color Cyan
+}
 
 switch ($Action) {
     'up' {
@@ -319,14 +430,14 @@ switch ($Action) {
         }
 
         Write-Line "コンテナを起動します (docker compose up -d)..." -Color Cyan
-        Invoke-Wsl @('docker', 'compose', 'up', '-d')
+        Invoke-Wsl (@('docker', 'compose', 'up', '-d') + $composeTargets)
         if ($script:LastWslExit -ne 0) { throw "docker compose up に失敗しました。" }
 
         if (-not $NoWait) {
             Write-Line ""
             Write-Line "各 DB の準備完了を待機します（初回や破損時は作り直します）:" -Color Cyan
             $failed = @()
-            foreach ($svc in $ReadyChecks.Keys) {
+            foreach ($svc in $targets) {
                 $timeout = if ($ReadyTimeouts.ContainsKey($svc)) { $ReadyTimeouts[$svc] } else { $DefaultReadyTimeoutSec }
                 if (-not (Ensure-Service -Service $svc -Check $ReadyChecks[$svc] -TimeoutSec $timeout)) {
                     $failed += $svc
@@ -337,7 +448,7 @@ switch ($Action) {
             Write-Line ""
             Write-Line "Windows(localhost) からの到達確認:" -Color Cyan
             $unreachable = @()
-            foreach ($svc in $ServicePorts.Keys) {
+            foreach ($svc in $targets) {
                 $port = $ServicePorts[$svc]
                 if (Test-WindowsPort -Port $port) {
                     Write-Line ("  - {0,-10} localhost:{1} 到達 OK" -f $svc, $port) -Color Green
@@ -364,20 +475,26 @@ switch ($Action) {
 
         Write-Line ""
         Write-Line "起動しました。稼働状況:" -Color Green
-        Invoke-Wsl @('docker', 'compose', 'ps')
+        Invoke-Wsl (@('docker', 'compose', 'ps') + $composeTargets)
     }
     'down' {
         Write-Line "コンテナを停止します (docker compose down)..." -Color Cyan
-        Invoke-Wsl @('docker', 'compose', 'down')
+        Invoke-Wsl (@('docker', 'compose', 'down') + $composeTargets)
         if ($script:LastWslExit -ne 0) { throw "docker compose down に失敗しました。" }
-        Stop-KeepAlive
-        Write-Line "停止しました（キープアライブも解除）。" -Color Green
+        if ($isAllServices) {
+            Stop-KeepAlive
+            Write-Line "停止しました（キープアライブも解除）。" -Color Green
+        }
+        else {
+            # 一部だけ停止する場合は、残るコンテナのために VM を起こしたままにする。
+            Write-Line "停止しました（他のコンテナが残るためキープアライブは維持）。" -Color Green
+        }
     }
     'ps' {
-        Invoke-Wsl @('docker', 'compose', 'ps')
+        Invoke-Wsl (@('docker', 'compose', 'ps') + $composeTargets)
     }
     'logs' {
-        Invoke-Wsl @('docker', 'compose', 'logs', '-f')
+        Invoke-Wsl (@('docker', 'compose', 'logs', '-f') + $composeTargets)
     }
 }
 }

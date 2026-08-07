@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     LocalServicesOnDocker の指定したコンテナだけを再起動する（Rancher Desktop のネイティブ docker 版）。
 
@@ -64,12 +64,12 @@ param(
 )
 
 # 設定テーブル（$ServicePorts / $ReadyChecks / $ReadyTimeouts / $NetworkName）と
-# 関数（Write-Line / Wait-ForKey / Wait-DockerDaemon / Ensure-Service /
-# Test-WindowsPort など）を Start-Services.ps1 から取り込む。
+# 関数（Write-Line / Wait-ForKey / Wait-DockerDaemon / Resolve-Targets /
+# Ensure-Service / Test-WindowsPort など）を Start-Services.ps1 から取り込む。
 # -AsLibrary により、読み込んだ時点で up などの本処理は走らない。
-# 注: ドットソースは相手の param 変数も呼び出し元スコープへ持ち込むため、$NoWait /
-#     $NoPause は同じ値を明示的に渡して、自分の指定が上書きされないようにする。
-. "$PSScriptRoot\Start-Services.ps1" -AsLibrary -NoWait:$NoWait -NoPause:$NoPause
+# 注: ドットソースは相手の param 変数も呼び出し元スコープへ持ち込むため、$Service /
+#     $NoWait / $NoPause は同じ値を明示的に渡して、自分の指定が上書きされないようにする。
+. "$PSScriptRoot\Start-Services.ps1" -AsLibrary -Service $Service -NoWait:$NoWait -NoPause:$NoPause
 
 function Show-Usage {
     Write-Line ""
@@ -98,30 +98,7 @@ function Show-Usage {
     Write-Line "詳細は Get-Help .\Reboot-Services.ps1 -Full で参照できます。" -Color DarkGray
 }
 
-function Resolve-Targets {
-    # 指定名を正規のサービス名へ解決する。all は全サービスへ展開し、重複は取り除く。
-    # 未知の名前は $script:UnknownNames へ集める。
-    param([string[]]$Names)
-    $known = @($ServicePorts.Keys)
-    $resolved = @()
-    $script:UnknownNames = @()
-    foreach ($name in $Names) {
-        if ([string]::IsNullOrWhiteSpace($name)) { continue }
-        if ($name -eq 'all') {
-            foreach ($k in $known) { if ($resolved -notcontains $k) { $resolved += $k } }
-            continue
-        }
-        # -eq は既定で大文字小文字を区別しないため、入力の表記ゆれを正規名へ寄せられる。
-        $match = @($known | Where-Object { $_ -eq $name })
-        if ($match.Count -gt 0) {
-            if ($resolved -notcontains $match[0]) { $resolved += $match[0] }
-        }
-        else {
-            $script:UnknownNames += $name
-        }
-    }
-    return $resolved
-}
+# Resolve-Targets（サービス名の解決）は Start-Services.ps1 から取り込んだものを使う。
 
 # --- 引数の解釈（本処理前に済ませ、問題があればヘルプを出して終了）--------------
 if (-not $Service -or @($Service).Count -eq 0) {
