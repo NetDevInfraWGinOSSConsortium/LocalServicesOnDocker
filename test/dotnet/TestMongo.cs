@@ -9,7 +9,12 @@ public static class TestMongo
     public static async Task RunAsync()
     {
         Console.WriteLine("===== Test MongoDB =====");
-        var client = new MongoClient(Config.MongoUri);
+        // ドライバは接続を遅延させるため、実際の待ち時間はサーバ選択タイムアウトで決まる。
+        // 接続タイムアウトだけでは既定の 30 秒待ってしまうので、両方を指定する。
+        var settings = MongoClientSettings.FromConnectionString(Config.MongoUri);
+        settings.ConnectTimeout = TimeSpan.FromSeconds(Config.ConnectTimeoutSec);
+        settings.ServerSelectionTimeout = TimeSpan.FromSeconds(Config.ConnectTimeoutSec);
+        var client = new MongoClient(settings);
         await client.GetDatabase("admin").RunCommandAsync<BsonDocument>(new BsonDocument("ping", 1));
         Console.WriteLine("Connected successfully to server.");
 

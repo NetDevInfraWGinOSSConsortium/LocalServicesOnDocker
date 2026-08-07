@@ -13,6 +13,7 @@ async function run() {
     user: config.postgres.user,
     password: config.postgres.password,
     database: config.postgres.database,
+    connectionTimeoutMillis: config.connectTimeoutMs,
   });
 
   try {

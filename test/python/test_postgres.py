@@ -1,7 +1,7 @@
 """PostgreSQL 接続テスト（psycopg2）。"""
 import psycopg2
 
-from config import POSTGRES
+from config import CONNECT_TIMEOUT_SEC, POSTGRES
 from util import print_table
 
 
@@ -13,6 +13,7 @@ def run():
         user=POSTGRES["user"],
         password=POSTGRES["password"],
         dbname=POSTGRES["dbname"],
+        connect_timeout=CONNECT_TIMEOUT_SEC,
     )
     try:
         with conn.cursor() as cur:

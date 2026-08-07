@@ -17,6 +17,7 @@ async function run() {
       password: config.sqlserver.password,
       database: config.sqlserver.database,
       options: config.sqlserver.options,
+      connectionTimeout: config.connectTimeoutMs,
     });
 
     const result = await pool.request().query('SELECT * FROM Shippers');

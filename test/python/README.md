@@ -67,6 +67,13 @@
 > uv run python test_all.py
 ```
 
+接続タイムアウトは既定 3 秒。サービスが起動していないときに長く待たされないようにしている。
+変更する場合は `DB_CONNECT_TIMEOUT`（秒）で上書きする。
+```
+> set DB_CONNECT_TIMEOUT=10
+> uv run python test_all.py
+```
+
 ## 補足
 - `uv run` は `.venv` 内の Python を使うため、PATH 上の `python`（Store スタブ等）に
   依存しない。`uv` は実行ファイルなので、バッチ内で `call` を付けなくても末尾の

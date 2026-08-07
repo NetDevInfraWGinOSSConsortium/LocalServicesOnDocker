@@ -6,6 +6,12 @@ import os
 
 HOST = os.environ.get("DB_HOST", "localhost")
 
+# 接続タイムアウト。サービスが起動していないときに長時間ぶら下がらないよう 3 秒に統一する。
+# ドライバによって秒指定とミリ秒指定があるため両方用意する。
+# 環境変数 DB_CONNECT_TIMEOUT（秒）で上書き可能。
+CONNECT_TIMEOUT_SEC = int(os.environ.get("DB_CONNECT_TIMEOUT", 3))
+CONNECT_TIMEOUT_MS = CONNECT_TIMEOUT_SEC * 1000
+
 REDIS = {
     "host": HOST,
     "port": int(os.environ.get("REDIS_PORT", 6379)),

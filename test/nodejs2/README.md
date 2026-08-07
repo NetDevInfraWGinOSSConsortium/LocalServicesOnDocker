@@ -58,3 +58,10 @@
 > set DB_HOST=192.168.0.10
 > npm test
 ```
+
+接続タイムアウトは既定 3 秒。サービスが起動していないときに長く待たされないようにしている。
+変更する場合は `DB_CONNECT_TIMEOUT`（秒）で上書きする。
+```
+> set DB_CONNECT_TIMEOUT=10
+> npm test
+```

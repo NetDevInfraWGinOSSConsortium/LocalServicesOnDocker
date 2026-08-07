@@ -14,6 +14,8 @@ async function run() {
       user: config.oracle.user,
       password: config.oracle.password,
       connectString: config.oracle.connectString,
+      // node-oracledb の connectTimeout は「秒」指定。
+      connectTimeout: config.connectTimeoutSec,
     });
 
     // 既定では行が配列で返るため、console.table 用にオブジェクト形式を指定する。

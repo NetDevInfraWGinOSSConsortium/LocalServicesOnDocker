@@ -4,7 +4,15 @@
 // 環境変数で上書き可能（例: DB_HOST=192.168.0.10 node TestMySQL.js）。
 const host = process.env.DB_HOST || 'localhost';
 
+// 接続タイムアウト。サービスが起動していないときに長時間ぶら下がらないよう 3 秒に統一する。
+// ドライバによって秒指定とミリ秒指定があるため両方用意する。
+// 環境変数 DB_CONNECT_TIMEOUT（秒）で上書き可能。
+const connectTimeoutSec = Number(process.env.DB_CONNECT_TIMEOUT || 3);
+
 module.exports = {
+  connectTimeoutSec,
+  connectTimeoutMs: connectTimeoutSec * 1000,
+
   redis: {
     host,
     port: Number(process.env.REDIS_PORT || 6379),

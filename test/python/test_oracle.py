@@ -4,7 +4,7 @@ Thin モードが既定のため、Oracle Client（Instant Client）のインス
 """
 import oracledb
 
-from config import ORACLE
+from config import CONNECT_TIMEOUT_SEC, ORACLE
 from util import print_table
 
 
@@ -14,6 +14,7 @@ def run():
         user=ORACLE["user"],
         password=ORACLE["password"],
         dsn=ORACLE["dsn"],
+        tcp_connect_timeout=CONNECT_TIMEOUT_SEC,
     )
     try:
         with conn.cursor() as cur:

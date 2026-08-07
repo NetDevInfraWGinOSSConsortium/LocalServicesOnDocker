@@ -59,6 +59,13 @@
 > dotnet run
 ```
 
+接続タイムアウトは既定 3 秒。サービスが起動していないときに長く待たされないようにしている。
+変更する場合は `DB_CONNECT_TIMEOUT`（秒）で上書きする。
+```
+> set DB_CONNECT_TIMEOUT=10
+> dotnet run
+```
+
 ## 補足
 - `dotnet` は実行ファイルなので、バッチ内で `call` を付けなくても末尾の `pause` は正しく動作する。
 - ビルド成果物（`bin/` `obj/`）はリポジトリの `.gitignore` で除外済み。

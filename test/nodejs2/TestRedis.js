@@ -7,7 +7,11 @@ const config = require('./config');
 async function run() {
   console.log('===== Test Redis =====');
 
-  const redis = new Redis({ ...config.redis, lazyConnect: true });
+  const redis = new Redis({
+    ...config.redis,
+    lazyConnect: true,
+    connectTimeout: config.connectTimeoutMs,
+  });
   try {
     await redis.connect();
 

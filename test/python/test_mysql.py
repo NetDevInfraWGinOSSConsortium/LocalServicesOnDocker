@@ -1,7 +1,7 @@
 """MySQL 接続テスト（PyMySQL）。"""
 import pymysql
 
-from config import MYSQL
+from config import CONNECT_TIMEOUT_SEC, MYSQL
 from util import print_table
 
 
@@ -13,6 +13,7 @@ def run():
         user=MYSQL["user"],
         password=MYSQL["password"],
         database=MYSQL["database"],
+        connect_timeout=CONNECT_TIMEOUT_SEC,
     )
     try:
         with conn.cursor() as cur:

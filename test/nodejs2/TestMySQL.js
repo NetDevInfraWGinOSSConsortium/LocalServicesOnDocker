@@ -16,6 +16,7 @@ async function run() {
     database: config.mysql.database,
     waitForConnections: true,
     connectionLimit: 4,
+    connectTimeout: config.connectTimeoutMs,
   });
 
   try {

@@ -8,7 +8,12 @@ const config = require('./config');
 async function run() {
   console.log('===== Test MongoDB =====');
 
-  const client = new MongoClient(config.mongo.url);
+  // ドライバは接続を遅延させるため、実際の待ち時間はサーバ選択タイムアウトで決まる。
+  // 接続タイムアウトだけでは既定の 30 秒待ってしまうので、両方を指定する。
+  const client = new MongoClient(config.mongo.url, {
+    connectTimeoutMS: config.connectTimeoutMs,
+    serverSelectionTimeoutMS: config.connectTimeoutMs,
+  });
   try {
     await client.connect();
     console.log('Connected successfully to server.');

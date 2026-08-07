@@ -1,13 +1,19 @@
 """MongoDB 接続テスト（PyMongo）。"""
 from pymongo import MongoClient
 
-from config import MONGO
+from config import CONNECT_TIMEOUT_MS, MONGO
 from util import print_table
 
 
 def run():
     print("===== Test MongoDB =====")
-    client = MongoClient(MONGO["uri"])
+    # PyMongo は接続を遅延させるため、実際の待ち時間はサーバ選択タイムアウトで決まる。
+    # 接続タイムアウトだけでは既定の 30 秒待ってしまうので、両方を指定する。
+    client = MongoClient(
+        MONGO["uri"],
+        connectTimeoutMS=CONNECT_TIMEOUT_MS,
+        serverSelectionTimeoutMS=CONNECT_TIMEOUT_MS,
+    )
     try:
         client.admin.command("ping")
         print("Connected successfully to server.")
