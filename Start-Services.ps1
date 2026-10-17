@@ -34,6 +34,12 @@
     完了時のキー入力待ち（Start-Services.bat の pause 相当）を行わない。
     入力がリダイレクトされている非対話実行では、指定しなくても自動的に待たない。
 
+.PARAMETER BufferPoolMB
+    RDBMS（mysql / postgres / sqlserver）のバッファプールの大きさ（MB、128 以上）。
+    省略時は環境変数 DB_BUFFER_POOL_MB → .env → 既定（mysql / postgres は 128、sqlserver は 300）
+    の順で決まる（docker-compose.yml）。
+    値が前回と変わると、compose が対象コンテナを作り直す。oracle は対象外。
+
 .PARAMETER AsLibrary
     定義（設定テーブルと関数）だけを読み込み、up/down 等の本処理は実行せずに戻る。
     Reboot-Services.ps1 がドットソースで再利用するための内部用スイッチ。
@@ -77,6 +83,10 @@ param(
     [switch]$NoWait,
 
     [switch]$NoPause,
+
+    # 0 は「指定なし」（Reboot-Services*.ps1 がドットソース時に常に値を渡すため）。
+    [ValidateScript({ $_ -eq 0 -or $_ -ge 128 })]
+    [int]$BufferPoolMB = 0,
 
     [switch]$AsLibrary
 )
@@ -127,13 +137,15 @@ function Wait-DockerDaemon {
 # ===========================================================================
 # ドットソース（. Start-Services.ps1 -AsLibrary）で読み込まれた場合は、上の定義
 # だけを呼び出し元のスコープへ提供し、本処理は行わずに戻る。
+# -BufferPoolMB の反映はその前に行う（Reboot 系でも compose が値を参照できるように）。
+if ($BufferPoolMB -gt 0) { Set-BufferPoolEnv -SizeMB $BufferPoolMB }
 if ($AsLibrary) { return }
 
 # 以降はドットソース時には実行されない（Show-Usage も呼び出し元へは渡らないため、
 # Reboot-Services.ps1 が自前の Show-Usage を定義しても衝突しない）。
 function Show-Usage {
     Write-Line ""
-    Write-Line "使い方: .\Start-Services.ps1 [up|down|ps|logs|help] [<サービス名> ...] [-NoWait] [-NoPause]" -Color Cyan
+    Write-Line "使い方: .\Start-Services.ps1 [up|down|ps|logs|help] [<サービス名> ...] [-NoWait] [-NoPause] [-BufferPoolMB <MB>]" -Color Cyan
     Write-Line ""
     Write-Line "  アクションを省略すると up、サービス名を省略すると全サービスが対象になります。"
     Write-Line ""
@@ -146,10 +158,13 @@ function Show-Usage {
     Write-Line ""
     Show-ServiceList -AllNote '上記すべて（省略時と同じ）'
     Write-Line ""
+    Write-Line "  -BufferPoolMB <MB>  RDBMS のバッファプール（128 以上。既定 128 / sqlserver 300。oracle は対象外）"
+    Write-Line ""
     Write-Line "例:" -Color Cyan
     Write-Line "  .\Start-Services.ps1"
     Write-Line "  .\Start-Services.ps1 mysql redis"
     Write-Line "  .\Start-Services.ps1 down oracle"
+    Write-Line "  .\Start-Services.ps1 mysql -BufferPoolMB 512"
     Write-Line "  .\Start-Services.ps1 help"
     Write-Line ""
     Write-Line "詳細は Get-Help .\Start-Services.ps1 -Full で参照できます。" -Color DarkGray
@@ -227,6 +242,9 @@ try {
                 Write-Line "ネットワーク '$NetworkName' は既に存在します。" -Color DarkGray
             }
 
+            if ($BufferPoolMB -gt 0) {
+                Write-Line ("RDBMS のバッファプール: {0} MB (-BufferPoolMB)" -f $BufferPoolMB) -Color DarkGray
+            }
             Write-Line "コンテナを起動します (docker compose up -d)..." -Color Cyan
             & docker compose up -d @composeTargets
             if ($LASTEXITCODE -ne 0) {

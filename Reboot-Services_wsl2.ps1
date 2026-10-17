@@ -36,6 +36,11 @@
     完了時のキー入力待ち（pause 相当）を行わない。
     入力がリダイレクトされている非対話実行では、指定しなくても自動的に待たない。
 
+.PARAMETER BufferPoolMB
+    RDBMS（mysql / postgres / sqlserver）のバッファプールの大きさ（MB、128 以上）。
+    restart では反映されないため、指定した場合は -Recreate を付けたものとして作り直す。
+    oracle は対象外。
+
 .EXAMPLE
     .\Reboot-Services_wsl2.ps1
     指定できるサービス名と使い方を表示する。
@@ -67,7 +72,10 @@ param(
 
     [switch]$NoWait,
 
-    [switch]$NoPause
+    [switch]$NoPause,
+
+    [ValidateScript({ $_ -eq 0 -or $_ -ge 128 })]
+    [int]$BufferPoolMB = 0
 )
 
 # 設定テーブル（$ServicePorts / $ReadyChecks / $ReadyTimeouts / $NetworkName）と
@@ -78,14 +86,14 @@ param(
 # -AsLibrary により本処理は走らない。
 # $Distro は WSL 実行ヘルパ（$wslBaseArgs / $wslPath）の組み立てに必要なので必ず渡す。
 # 注: ドットソースは相手の param 変数も呼び出し元スコープへ持ち込むため、$Service /
-#     $NoWait / $NoPause は同じ値を明示的に渡して、自分の指定が上書きされないようにする。
-$libArgs = @{ AsLibrary = $true; Service = $Service; NoWait = $NoWait; NoPause = $NoPause }
+#     $NoWait / $NoPause / $BufferPoolMB は同じ値を明示的に渡して、自分の指定が上書きされないようにする。
+$libArgs = @{ AsLibrary = $true; Service = $Service; NoWait = $NoWait; NoPause = $NoPause; BufferPoolMB = $BufferPoolMB }
 if ($PSBoundParameters.ContainsKey('Distro')) { $libArgs['Distro'] = $Distro }
 . "$PSScriptRoot\Start-Services_wsl2.ps1" @libArgs
 
 function Show-Usage {
     Write-Line ""
-    Write-Line "使い方: .\Reboot-Services_wsl2.ps1 <サービス名> [<サービス名> ...] [-Distro <名前>] [-Recreate] [-NoWait] [-NoPause]" -Color Cyan
+    Write-Line "使い方: .\Reboot-Services_wsl2.ps1 <サービス名> [<サービス名> ...] [-Distro <名前>] [-Recreate] [-NoWait] [-NoPause] [-BufferPoolMB <MB>]" -Color Cyan
     Write-Line ""
     Write-Line "  再起動するサービスをコマンドラインで指定します。"
     Write-Line "  サービス名を指定しない場合は、このヘルプを表示して終了します。"
@@ -97,11 +105,13 @@ function Show-Usage {
     Write-Line "  -Recreate   restart ではなく、匿名ボリュームごと削除して作り直す（破損復旧用）。"
     Write-Line "  -NoWait     再起動後の準備完了待ちを行わない。"
     Write-Line "  -NoPause    終了時のキー入力待ちを行わない。"
+    Write-Line "  -BufferPoolMB <MB>  RDBMS のバッファプール（128 以上）。作り直して反映する。"
     Write-Line ""
     Write-Line "例:" -Color Cyan
     Write-Line "  .\Reboot-Services_wsl2.ps1 mysql"
     Write-Line "  .\Reboot-Services_wsl2.ps1 mysql redis"
     Write-Line "  .\Reboot-Services_wsl2.ps1 mysql -Recreate"
+    Write-Line "  .\Reboot-Services_wsl2.ps1 mysql -BufferPoolMB 512"
     Write-Line "  .\Reboot-Services_wsl2.ps1 all -Distro Ubuntu-22.04"
     Write-Line ""
     Write-Line "詳細は Get-Help .\Reboot-Services_wsl2.ps1 -Full で参照できます。" -Color DarkGray
@@ -130,6 +140,12 @@ if ($targets.Count -eq 0) {
     Show-Usage
     Wait-ForKey
     exit 1
+}
+
+# restart では compose の設定変更（バッファプール）が反映されないため、作り直しに切り替える。
+if ($BufferPoolMB -gt 0 -and -not $Recreate) {
+    Write-Line ("-BufferPoolMB {0} を反映するため、restart ではなく作り直します（-Recreate 相当）。" -f $BufferPoolMB) -Color Yellow
+    $Recreate = [switch]$true
 }
 
 # ===========================================================================

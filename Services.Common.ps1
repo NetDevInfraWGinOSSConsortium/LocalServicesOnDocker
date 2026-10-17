@@ -75,6 +75,11 @@ $ReadyChecks = [ordered]@{
 $DefaultReadyTimeoutSec = 150
 $ReadyTimeouts = @{ oracle = 300 }
 
+# RDBMS のバッファプール（MB）を指定する環境変数。docker-compose.yml が参照する
+# （mysql / postgres / sqlserver。未設定なら mysql / postgres は 128、sqlserver は 300）。
+# -BufferPoolMB で設定する。
+$BufferPoolEnvName = 'DB_BUFFER_POOL_MB'
+
 # ヘルプ表示を要求する引数。各スクリプトの -Help スイッチでも同じ動作にする。
 $HelpTokens = @('help', '--help', '/?', '?')
 
@@ -229,6 +234,20 @@ function Test-HelpRequested {
     # 引数のどこかにヘルプ要求のトークンがあれば $true。
     param([string[]]$Names)
     return (@($Names | Where-Object { $HelpTokens -contains $_ }).Count -gt 0)
+}
+
+# --- バッファプールの指定 ---------------------------------------------------
+function Set-BufferPoolEnv {
+    # -BufferPoolMB の値を、このプロセス（と子プロセスの docker compose）の環境変数に設定する。
+    # WSL2 版は wsl.exe 経由で compose を実行するため、WSLENV にも名前を加えて VM 内へ引き継ぐ
+    # （native 版では WSLENV は使われないので無害）。
+    # 注: 値が変わると compose は対象コンテナを作り直す（永続ボリューム未使用のため無害）。
+    param([Parameter(Mandatory)][int]$SizeMB)
+    Set-Item -Path "Env:$BufferPoolEnvName" -Value "$SizeMB"
+    $names = @($env:WSLENV -split ':' | Where-Object { $_ })
+    if ($names -notcontains $BufferPoolEnvName) {
+        $env:WSLENV = (@($names) + $BufferPoolEnvName) -join ':'
+    }
 }
 
 # --- サービス名の解決 -------------------------------------------------------

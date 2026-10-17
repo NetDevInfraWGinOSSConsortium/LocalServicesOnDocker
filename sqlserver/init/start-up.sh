@@ -32,6 +32,44 @@ for i in $(seq 1 90); do
   sleep 2
 done
 
+# MSSQL_COLLATION を指定した初回起動では、SQL Server はログインを受け付け始めた「後」に
+# 裏でサーバーの照合順序を変更する（全 DB の再インデックス）。その最中に Northwind を作って
+# 使っていると排他ロックが取れず（Error 5030）、SQL Server が自らシャットダウンする（Error 3434）。
+# そこで、照合順序が指定値に変わるまで待ってから先へ進む（2 回目以降の起動では即座に一致する）。
+# ただし SERVERPROPERTY は再インデックスの完了より先に新しい値を返すため、変更が行われた起動
+# （エラーログに Attempting ... がある）では、完了または失敗の行がログに出るまでさらに待つ。
+WANT="${MSSQL_COLLATION:-}"
+ERRORLOG=/var/opt/mssql/log/errorlog
+if [ -n "$WANT" ]; then
+  echo "[init] waiting for server collation to become ${WANT}..."
+  cur=""
+  for i in $(seq 1 90); do
+    cur=$(q -h -1 -W -Q "SET NOCOUNT ON; SELECT CONVERT(nvarchar(128), SERVERPROPERTY('Collation'))" 2>/dev/null | tr -d '[:space:]')
+    [ "$cur" = "$WANT" ] && break
+    sleep 2
+  done
+  [ "$cur" = "$WANT" ] || echo "[init] WARNING: server collation is still '${cur}'; continue anyway."
+  if grep -a -q "Attempting to change default collation" "$ERRORLOG" 2>/dev/null; then
+    for i in $(seq 1 90); do
+      grep -a -q -E "default collation was successfully changed|Cannot change sort order" "$ERRORLOG" 2>/dev/null && break
+      sleep 2
+    done
+    echo "[init] collation change finished."
+  fi
+fi
+
+# バッファプールの上限（max server memory）。compose の BUFFER_POOL_MB（既定 300）を反映する。
+# コンテナは毎回作り直される前提なので、起動の度に設定する。動的に反映され再起動は不要。
+# 128 未満は SQL Server が受け付けないため、数値でない・小さすぎる値は設定しない。
+MB="${BUFFER_POOL_MB:-300}"
+if [ "$MB" -ge 128 ] 2>/dev/null; then
+  echo "[init] setting max server memory to ${MB} MB..."
+  q -Q "EXEC sp_configure 'show advanced options', 1; RECONFIGURE; EXEC sp_configure 'max server memory (MB)', ${MB}; RECONFIGURE;" >/dev/null 2>&1 \
+    || echo "[init] WARNING: failed to set max server memory."
+else
+  echo "[init] WARNING: invalid BUFFER_POOL_MB '${MB}' (need >= 128); keep default."
+fi
+
 # Shippers が 3 行あれば完全ロード済みとみなす。
 loaded() {
   local n

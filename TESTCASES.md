@@ -143,6 +143,35 @@ WSL2 内の dockerd が必要。**Rancher Desktop 側を停止してから**実�
 - **MongoDB はサーバ選択タイムアウト（既定 30 秒）が支配的**。
   `connectTimeout` と `serverSelectionTimeout` の両方が設定されていること。
 
+## M. メモリ上限（`-BufferPoolMB` / DB キャッシュ / `restart: "no"`）
+
+既定値（mysql・postgres 128MB、sqlserver 300MB、mongo 0.3GB）と、`-BufferPoolMB` による変更・復帰を確かめる。
+M01〜M04 は Docker デーモンが無くても実行できる。実際の値は [CHEATSHEET.md](CHEATSHEET.md#現在の値を確認する) の
+確認コマンドで見る（mongo は `maximum bytes configured` が約 307MB＝0.3GB）。
+シェルに `DB_BUFFER_POOL_MB` / `*_BUFFER_POOL_MB` / `MONGO_CACHE_SIZE_GB` が残っていない・`.env` が無いことを先に確認する。
+
+| # | 事前 | コマンド | 期待 |
+|---|---|---|---|
+| M01 | 任意 | `Start-Services.ps1 help -NoPause` / `Reboot-Services.ps1 -NoPause` | どちらも `-BufferPoolMB <MB>` の行と例を表示・コンテナ集合が不変 |
+| M02 | 任意 | `Start-Services.ps1 ps -BufferPoolMB 50 -NoPause`<br>`Reboot-Services.ps1 mysql -BufferPoolMB 127 -NoPause` | どちらも exit 1・`BufferPoolMB` の検証エラー・**何も起動も再起動もしない** |
+| M03 | 任意 | `docker compose config` | `--innodb-buffer-pool-size=128M`・`shared_buffers=128MB`・sqlserver の `BUFFER_POOL_MB: "300"`・mongo の `--wiredTigerCacheSizeGB "0.3"`・`restart: "no"` が 6 個 |
+| M04 | 任意 | `DB_BUFFER_POOL_MB=512`・`MYSQL_BUFFER_POOL_MB=256`・`MONGO_CACHE_SIZE_GB=0.5` を設定して `docker compose config` | mysql=256M（個別の変数が優先）・postgres=512MB・sqlserver=512・mongo=0.5 |
+| M05 | コンテナ 0 | `Start-Services.ps1 mysql postgres sqlserver mongo -NoPause` | exit 0・実際の値が 128 / 128MB / 300 / 約 307MB |
+| M06 | M05 の後 | `Start-Services.ps1 mysql -BufferPoolMB 512 -NoPause` | `RDBMS のバッファプール: 512 MB` を表示・**mysql のコンテナ ID だけが変わる**・値が 512 |
+| M07 | M06 の後 | `Start-Services.ps1 mysql -NoPause`（`-BufferPoolMB` なし） | mysql のコンテナ ID が再び変わり、値が **128 に戻る** |
+| M08 | M05 の後 | `Reboot-Services.ps1 sqlserver -BufferPoolMB 1024 -NoPause` | `-Recreate 相当` の案内・**コンテナ ID が変わる**（restart ではない）・`max server memory` が 1024・Northwind 準備完了 |
+| M09 | M05 の後 | `SQLSERVER_BUFFER_POOL_MB=64` を設定して `Start-Services.ps1 sqlserver -NoPause` | `docker compose logs sqlserver` に `invalid BUFFER_POOL_MB '64'`・値は既定（2147483647）のまま・**準備完了にはなる** |
+| M10 | WSL2 側でコンテナ 0 | `Start-Services_wsl2.ps1 mysql -BufferPoolMB 256 -NoPause` | WSL2 内のコンテナで値が 256（`WSLENV` で VM 内へ引き継がれている） |
+| M11 | redis・mysql を `Start-Services.ps1` で起動済み | `rdctl shutdown` → `rdctl start`（エンジン再起動） | エンジン起動後に**コンテナが自動では起動しない**（`docker compose ps -a` で `exited`） |
+| M12 | 任意 | `Reboot-Services.ps1 sqlserver -Recreate -NoPause` を **3 回** | 3 回とも `準備待ち... OK`（`応答なし → 作り直し` を出さない。実測 61〜71 秒）。<br>`docker compose logs sqlserver` で `The default collation was successfully changed.` が `[init] loading Northwind` より**前**に出る |
+
+M09 は「設定できない値でも DB は起動する」ことの確認。
+M12 は start-up.sh の照合順序の変更待ちの確認。これが無いと、初回起動時の照合順序の変更（Japanese_CI_AS）と
+Northwind の作成がぶつかり、SQL Server が自らシャットダウンする（Error 5030 → 3434、終了コード 255）。
+`restart: always` の頃はコンテナが自動で起動し直すため表に出なかったが、`restart: "no"` では毎回
+`応答なし → 作り直し` となり、作り直しでも同じく落ちて `NG` になる（実測 3 回中 3 回）。M11 は全サービスを一斉に復帰させないための
+`restart: "no"` の確認で、以前の `restart: always` の頃に作られたコンテナでは成立しない（一度 `down` してから行う）。
+
 ## F. 実行環境・共通部品の契約
 
 | # | 内容 | 期待 |

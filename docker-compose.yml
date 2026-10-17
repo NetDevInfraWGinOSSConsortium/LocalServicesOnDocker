@@ -1,7 +1,19 @@
+# メモリ削減のための DB キャッシュの上限:
+#   mysql / postgres … 既定 128MB（イメージ本来の既定値と同じ）
+#   sqlserver        … 既定 300MB（イメージ本来は上限なし）
+#   mongo            … 既定 0.3GB（MONGO_CACHE_SIZE_GB。イメージ本来は (VM のメモリ - 1GB) の半分）
+#   oracle           … 対象外（SGA の変更で起動不能になる危険があるため）
+# RDBMS の変数の優先順: サービス個別の <SVC>_BUFFER_POOL_MB > 全 RDBMS 共通の DB_BUFFER_POOL_MB > 上記の既定。
+# 値はシェルの環境変数か、このフォルダの .env（git 管理外）で与える。
+# Start-Services*.ps1 の -BufferPoolMB は DB_BUFFER_POOL_MB を設定する。詳細は CHEATSHEET.md。
+#
+# restart: "no" … Docker エンジンの起動時に、前回動いていたコンテナを自動で復帰させない
+# （全 DB が一斉に起動してメモリを使い切り、システムが固まるのを防ぐ）。必要なものだけを
+# Start-Services*.ps1 で起動する。落ちたコンテナは Start / Reboot の準備完了待ちが作り直す。
 services:
   redis:
     image: redis
-    restart: always
+    restart: "no"
     command: redis-server /usr/local/etc/redis/redis.conf --appendonly yes
     ports:
       - 6379:6379
@@ -13,7 +25,10 @@ services:
 
   mongo:
     image: mongo
-    restart: always
+    restart: "no"
+    # WiredTiger キャッシュの上限（GB、0.25 以上）。公式イメージの entrypoint は
+    # 先頭が mongod なら認証設定（MONGO_INITDB_ROOT_*）を加えてそのまま起動する。
+    command: mongod --wiredTigerCacheSizeGB ${MONGO_CACHE_SIZE_GB:-0.3}
     environment:
       MONGO_INITDB_ROOT_USERNAME: seigi
       MONGO_INITDB_ROOT_PASSWORD: seigi@123
@@ -28,8 +43,8 @@ services:
 
   mysql:
     image: mysql
-    restart: always
-    command: mysqld --socket=/run/mysqld/mysqld.sock --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    restart: "no"
+    command: mysqld --socket=/run/mysqld/mysqld.sock --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --innodb-buffer-pool-size=${MYSQL_BUFFER_POOL_MB:-${DB_BUFFER_POOL_MB:-128}}M
     environment:
       MYSQL_ROOT_PASSWORD: seigi@123
       MYSQL_DATABASE: test
@@ -46,7 +61,8 @@ services:
 
   postgres:
     image: postgres
-    restart: always
+    restart: "no"
+    command: postgres -c shared_buffers=${POSTGRES_BUFFER_POOL_MB:-${DB_BUFFER_POOL_MB:-128}}MB
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=seigi@123
@@ -60,7 +76,7 @@ services:
 
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
-    restart: always
+    restart: "no"
     # 本来の起動処理(launch_sqlservr.sh → sqlservr)を exec でそのまま実行しつつ、
     # 背後で start-up.sh を走らせて Northwind DB を自動作成する。
     # exec により sqlservr が PID1 となり、停止時に SIGTERM を受けて正常終了できる。
@@ -74,6 +90,8 @@ services:
       - MSSQL_PID=Express
       - MSSQL_LCID=1041
       - MSSQL_COLLATION=Japanese_CI_AS
+      # start-up.sh が max server memory (MB) に設定する（SQL Server のバッファプールの上限）。
+      - BUFFER_POOL_MB=${SQLSERVER_BUFFER_POOL_MB:-${DB_BUFFER_POOL_MB:-300}}
     ports:
       - 1433:1433
     volumes:
@@ -88,7 +106,7 @@ services:
     # Docker Hub 版イメージ。DB 作成済みのため初回起動が速く、初期化スクリプトの
     # 仕組みも他の DB と同様に用意されている）。slim は不要機能を省いた軽量版。
     image: gvenzl/oracle-free:23-slim
-    restart: always
+    restart: "no"
     environment:
       # SYS / SYSTEM のパスワード（他サービスと同じ値に合わせる）。
       - ORACLE_PASSWORD=seigi@123

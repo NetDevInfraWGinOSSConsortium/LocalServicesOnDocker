@@ -1,5 +1,8 @@
 # LocalServicesOnDocker
 
+> **メモリを節約して使う手順は [CHEATSHEET.md](CHEATSHEET.md)** にまとめてある
+> （サービス毎の起動・停止・状態確認・再構築、DB のキャッシュ（バッファプール）の上限と変え方）。
+
 ### 実行方法
 このフォルダのコンテンツを実行するには、
 
@@ -155,9 +158,12 @@ common_link 作成 → `docker compose up -d` / `down`だけを実行する。
   ダブルクリック起動でウィンドウが即閉じせず出力・エラーを読めるよう、既定では成功・失敗どちらでも待つ。
   ただし入力がリダイレクトされている非対話実行（`Stop-Services.ps1` からの呼び出し・パイプ・CI 等）では、
   指定しなくても自動的に待たない。
+- `-BufferPoolMB <MB>`: RDBMS（mysql / postgres / sqlserver）のバッファプールを指定する（128 以上。既定は mysql / postgres が 128、sqlserver が 300）。
+  詳細は [CHEATSHEET.md](CHEATSHEET.md#db-のキャッシュバッファプール)。
 ```
 > .\Start-Services.ps1 up -NoWait
 > .\Start-Services.ps1 up -NoPause
+> .\Start-Services.ps1 mysql -BufferPoolMB 512
 ```
 
 PowerShell の実行ポリシーでブロックされる場合は、以下のように実行する。
@@ -220,6 +226,7 @@ WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行�
   公式 mysql / mssql イメージはデータを匿名ボリュームに持つため、restart では直らないデータ破損からの
   復旧に使う（本 compose は永続ボリューム未使用のため作り直しは無害）。
 - `-NoWait` / `-NoPause`: `Start-Services.ps1` と同じ。
+- `-BufferPoolMB <MB>`: `Start-Services.ps1` と同じ。`restart` では反映されないため、指定すると `-Recreate` 相当になる。
 - `-Distro`: WSL2 版のみ。WSL ディストリビューションを指定する。
 ```
 > .\Reboot-Services.ps1 mysql -Recreate
@@ -312,10 +319,10 @@ set "DISTRO=Ubuntu-22.04"
 | スクリプト | Docker エンジン | サービス名の指定 | ヘルプ | DB 初期化完了待ち | 主なオプション |
 |---|---|---|---|---|---|
 | `Start-Services.bat` / `Stop-Services.bat` | Rancher Desktop | できない（常に全部） | — | しない | — |
-| `Start-Services.ps1` / `Stop-Services.ps1` | Rancher Desktop | できる（省略時は全部） | `help` / `-Help` | する（`-NoWait` で省略可） | `-NoWait` `-NoPause` |
-| `Start-Services_wsl2.ps1` / `Stop-Services_wsl2.ps1` | WSL2 内の dockerd | できる（省略時は全部） | `help` / `-Help` | する | `-Distro` `-NoWait` `-NoPause` |
-| `Reboot-Services.ps1` | Rancher Desktop | できる（省略時はヘルプ） | 引数なし / `help` | する（指定サービスのみ） | `-Recreate` `-NoWait` `-NoPause` |
-| `Reboot-Services_wsl2.ps1` | WSL2 内の dockerd | できる（省略時はヘルプ） | 引数なし / `help` | する（指定サービスのみ） | `-Distro` `-Recreate` `-NoWait` `-NoPause` |
+| `Start-Services.ps1` / `Stop-Services.ps1` | Rancher Desktop | できる（省略時は全部） | `help` / `-Help` | する（`-NoWait` で省略可） | `-NoWait` `-NoPause` `-BufferPoolMB` |
+| `Start-Services_wsl2.ps1` / `Stop-Services_wsl2.ps1` | WSL2 内の dockerd | できる（省略時は全部） | `help` / `-Help` | する | `-Distro` `-NoWait` `-NoPause` `-BufferPoolMB` |
+| `Reboot-Services.ps1` | Rancher Desktop | できる（省略時はヘルプ） | 引数なし / `help` | する（指定サービスのみ） | `-Recreate` `-NoWait` `-NoPause` `-BufferPoolMB` |
+| `Reboot-Services_wsl2.ps1` | WSL2 内の dockerd | できる（省略時はヘルプ） | 引数なし / `help` | する（指定サービスのみ） | `-Distro` `-Recreate` `-NoWait` `-NoPause` `-BufferPoolMB` |
 | `Show-Services.ps1` / `Show-Services_wsl2.ps1` | 両対応（別ファイル） | できる（省略時は全部） | `help` / `-Help` | しない（1 回だけ判定） | `-Quick` `-Distro` `-NoPause` |
 | `oretoku-set.bat` / `oretoku-set_wsl2.bat` | 上記 `Start-Services*.ps1` に委譲 | ファイル内の `SERVICES` で固定 | — | する | （ファイル内で編集） |
 
@@ -342,7 +349,7 @@ Services.Common.ps1                    ← 設定と共通関数（エンジン�
 
 | 置き場所 | 内容 |
 |---|---|
-| `Services.Common.ps1` | `$NetworkName` `$ServicePorts` `$ReadyChecks` `$ReadyTimeouts` `$HelpTokens`／`Write-Line` `Wait-ForKey` `Wait-Service` `Ensure-Service` `Resolve-ComposeUpFailure` `Test-WindowsPort` `Show-ServiceList` `Test-HelpRequested` `Resolve-Targets` |
+| `Services.Common.ps1` | `$NetworkName` `$ServicePorts` `$ReadyChecks` `$ReadyTimeouts` `$BufferPoolEnvName` `$HelpTokens`／`Set-BufferPoolEnv` `Write-Line` `Wait-ForKey` `Wait-Service` `Ensure-Service` `Resolve-ComposeUpFailure` `Test-WindowsPort` `Show-ServiceList` `Test-HelpRequested` `Resolve-Targets` |
 | `Start-Services.ps1` / `Start-Services_wsl2.ps1` | `$ErrorActionPreference`、`Invoke-ComposeQuiet`、`Invoke-ComposeCapture`、`Wait-DockerDaemon`、`Show-Usage`、WSL 実行ヘルパ、キープアライブ |
 
 共通部品は compose コマンドの実行を次の 2 つに委ねている。これがエンジンの差し替え点で、
@@ -388,6 +395,10 @@ SQL Server の公式イメージは、他の DB のように初期化スクリ�
 - このスクリプトは DB を作成しない仕様のため、`start-up.sh` が先に
   `CREATE DATABASE Northwind` を行ってから `-d Northwind` で流し込む。
 - SQL Server 起動後に自動実行され、既に Northwind があればスキップする（冪等）。
+- 初回起動時は、SQL Server が裏で行う照合順序の変更（`MSSQL_COLLATION=Japanese_CI_AS`）の完了を待ってから
+  Northwind を作成する。変更中に Northwind を使うと SQL Server が自らシャットダウンするため。
+- バッファプールの上限（`max server memory`、既定 300MB）も、ここで起動の度に設定する
+  （[CHEATSHEET.md](CHEATSHEET.md#db-のキャッシュバッファプール)）。
 - PowerShell版は、この Northwind DB が利用可能になるまで待ってから起動完了とする。
 
 #### Oracle の SCOTT スキーマと XE サービスの自動作成
