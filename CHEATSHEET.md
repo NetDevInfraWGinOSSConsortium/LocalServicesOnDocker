@@ -25,14 +25,14 @@ DB コンテナを全部まとめて起動すると、Docker の VM がメモリ
 
 | サービス | 起動 | 停止 | 状態確認 | 再構築（作り直し） |
 |---|---|---|---|---|
-| redis | `.\Start-Services.ps1 redis` | `.\Stop-Services.ps1 redis` | `.\Show-Services.ps1 redis` | `.\Reboot-Services.ps1 redis -Recreate` |
-| mongo | `.\Start-Services.ps1 mongo` | `.\Stop-Services.ps1 mongo` | `.\Show-Services.ps1 mongo` | `.\Reboot-Services.ps1 mongo -Recreate` |
-| mysql | `.\Start-Services.ps1 mysql` | `.\Stop-Services.ps1 mysql` | `.\Show-Services.ps1 mysql` | `.\Reboot-Services.ps1 mysql -Recreate` |
-| postgres | `.\Start-Services.ps1 postgres` | `.\Stop-Services.ps1 postgres` | `.\Show-Services.ps1 postgres` | `.\Reboot-Services.ps1 postgres -Recreate` |
-| sqlserver | `.\Start-Services.ps1 sqlserver` | `.\Stop-Services.ps1 sqlserver` | `.\Show-Services.ps1 sqlserver` | `.\Reboot-Services.ps1 sqlserver -Recreate` |
-| oracle | `.\Start-Services.ps1 oracle` | `.\Stop-Services.ps1 oracle` | `.\Show-Services.ps1 oracle` | `.\Reboot-Services.ps1 oracle -Recreate` |
+| redis | `.\tools\Start-Services.ps1 redis` | `.\tools\Stop-Services.ps1 redis` | `.\tools\Show-Services.ps1 redis` | `.\tools\Reboot-Services.ps1 redis -Recreate` |
+| mongo | `.\tools\Start-Services.ps1 mongo` | `.\tools\Stop-Services.ps1 mongo` | `.\tools\Show-Services.ps1 mongo` | `.\tools\Reboot-Services.ps1 mongo -Recreate` |
+| mysql | `.\tools\Start-Services.ps1 mysql` | `.\tools\Stop-Services.ps1 mysql` | `.\tools\Show-Services.ps1 mysql` | `.\tools\Reboot-Services.ps1 mysql -Recreate` |
+| postgres | `.\tools\Start-Services.ps1 postgres` | `.\tools\Stop-Services.ps1 postgres` | `.\tools\Show-Services.ps1 postgres` | `.\tools\Reboot-Services.ps1 postgres -Recreate` |
+| sqlserver | `.\tools\Start-Services.ps1 sqlserver` | `.\tools\Stop-Services.ps1 sqlserver` | `.\tools\Show-Services.ps1 sqlserver` | `.\tools\Reboot-Services.ps1 sqlserver -Recreate` |
+| oracle | `.\tools\Start-Services.ps1 oracle` | `.\tools\Stop-Services.ps1 oracle` | `.\tools\Show-Services.ps1 oracle` | `.\tools\Reboot-Services.ps1 oracle -Recreate` |
 
-- サービス名はスペース区切りで複数指定できる（例: `.\Start-Services.ps1 mysql redis`）。
+- サービス名はスペース区切りで複数指定できる（例: `.\tools\Start-Services.ps1 mysql redis`）。
 - `-Recreate` を付けない `Reboot-Services.ps1 <サービス名>` は `docker compose restart`（データは保持）。
   本 compose は永続ボリュームを使っていないため、作り直してもテストデータは初期化スクリプトで再作成される。
 - メモリの実使用量は `docker stats --no-stream` で確認できる。
@@ -71,7 +71,7 @@ DB コンテナを全部まとめて起動すると、Docker の VM がメモリ
   （`MONGO_CACHE_SIZE_GB` で変える）。
 - oracle は SGA を小さくしすぎると DB が起動しなくなる危険があるため、自動では変更しない。
   なお 23ai Free は製品の制限で SGA と PGA の合計が 2GB までなので、それ以上は使わない。
-  メモリを空けたいときは、使わない間は `.\Stop-Services.ps1 oracle` で止めておく。
+  メモリを空けたいときは、使わない間は `.\tools\Stop-Services.ps1 oracle` で止めておく。
 
 ### 値の変え方
 
@@ -80,8 +80,8 @@ RDBMS の優先順位は **サービス個別の変数 > `DB_BUFFER_POOL_MB`（m
 
 **① スクリプトの `-BufferPoolMB`（その回だけ。mysql / postgres / sqlserver 共通）**
 ```
-> .\Start-Services.ps1 mysql postgres -BufferPoolMB 512
-> .\Reboot-Services.ps1 sqlserver -BufferPoolMB 1024
+> .\tools\Start-Services.ps1 mysql postgres -BufferPoolMB 512
+> .\tools\Reboot-Services.ps1 sqlserver -BufferPoolMB 1024
 ```
 - 128 以上を指定する。`Reboot-Services.ps1` は `restart` では反映されないため、指定すると自動で `-Recreate` 相当になる。
 - 次回 `-BufferPoolMB` なしで `up` すると既定値（または下記の設定）に戻り、コンテナが作り直される。
@@ -134,7 +134,7 @@ memory=6GB
 
 1. まだなら[VM のメモリ上限](#vm-全体のメモリに上限を付ける)を設定しておく（復帰した瞬間に再び固まるのを防ぐ）。
    そのうえで Rancher Desktop を起動する（WSL2 版ならそのまま 2. へ）。
-2. 起動したらすぐに全サービスを止めて、コンテナを削除する: `.\Stop-Services.ps1`（WSL2 版は `.\Stop-Services_wsl2.ps1`）
-3. 状態を確認する: `.\Show-Services.ps1`（すべて `-` になっていればよい）
-4. 必要なサービスだけを起動する: `.\Start-Services.ps1 mysql`
-5. 起動しない・データがおかしいサービスは作り直す: `.\Reboot-Services.ps1 mysql -Recreate`
+2. 起動したらすぐに全サービスを止めて、コンテナを削除する: `.\tools\Stop-Services.ps1`（WSL2 版は `.\tools\Stop-Services_wsl2.ps1`）
+3. 状態を確認する: `.\tools\Show-Services.ps1`（すべて `-` になっていればよい）
+4. 必要なサービスだけを起動する: `.\tools\Start-Services.ps1 mysql`
+5. 起動しない・データがおかしいサービスは作り直す: `.\tools\Reboot-Services.ps1 mysql -Recreate`

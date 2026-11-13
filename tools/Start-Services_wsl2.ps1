@@ -125,9 +125,9 @@ if ($Distro) {
     $wslBaseArgs += @('-d', $Distro)
 }
 
-# スクリプト配置フォルダ（＝docker-compose.yml のある場所）を WSL パスへ変換する。
+# docker-compose.yml のあるフォルダ（＝スクリプトの親フォルダ）を WSL パスへ変換する。
 # wsl.exe へ引数を渡すとバックスラッシュが失われるため、PowerShell 側で /mnt/x/... へ変換する。
-$scriptDir = $PSScriptRoot
+$scriptDir = Split-Path -Parent $PSScriptRoot   # docker-compose.yml のあるリポジトリ直下
 if ($scriptDir -notmatch '^([A-Za-z]):\\(.*)$') {
     throw "WSL パスへ変換できないパス形式です: $scriptDir"
 }

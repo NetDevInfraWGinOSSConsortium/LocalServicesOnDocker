@@ -17,7 +17,7 @@
 
 ## 前提
 - **.NET SDK 10 以上**（`dotnet --version` で確認）。
-- リポジトリ直下の `docker compose`（または `Start-Services.ps1`）でサービス群が起動していること。
+- リポジトリ直下の `docker compose`（または `tools\Start-Services.ps1`）でサービス群が起動していること。
 
 ## 使い方（Windows）
 このフォルダに移動し、

@@ -42,20 +42,20 @@ common_link 作成 → `docker compose up -d` / `down`だけを実行する。
 以下のコマンド（またはダブルクリック）でコンテナを起動する。引数なしは `up`。
 初回の common_link ネットワーク作成も自動で行われる。
 ```
-> .\Start-Services.bat
-> .\Start-Services.bat up
+> .\tools\Start-Services.bat
+> .\tools\Start-Services.bat up
 ```
 
 以下のコマンドでコンテナが停止する。`Stop-Services.bat`（`down` のショートカット）でも同じ。
 ```
-> .\Start-Services.bat down
-> .\Stop-Services.bat
+> .\tools\Start-Services.bat down
+> .\tools\Stop-Services.bat
 ```
 
 その他、稼働状況の確認やログ表示も可能。
 ```
-> .\Start-Services.bat ps
-> .\Start-Services.bat logs
+> .\tools\Start-Services.bat ps
+> .\tools\Start-Services.bat logs
 ```
 
 補足:
@@ -97,14 +97,14 @@ common_link 作成 → `docker compose up -d` / `down`だけを実行する。
 ヘルプは `help`（または `-Help`）で明示的に要求する。`Reboot-Services*.ps1` は引数なしでも
 ヘルプになるが、同じく `help` / `-Help` も受け付ける。
 ```
-> .\Start-Services.ps1 help
-> .\Start-Services.ps1 -Help
-> .\Stop-Services.ps1 help
-> .\Reboot-Services.ps1
+> .\tools\Start-Services.ps1 help
+> .\tools\Start-Services.ps1 -Help
+> .\tools\Stop-Services.ps1 help
+> .\tools\Reboot-Services.ps1
 ```
 `help` の代わりに `--help` / `/?` / `?` でも同じ。表示される一覧は
 [共通部品](#スクリプトの構成共通部品)の `$ServicePorts` から生成しているため、常に最新の内容になる。
-なお `Get-Help .\Start-Services.ps1 -Full` では、各パラメーターの詳しい説明を参照できる。
+なお `Get-Help .\tools\Start-Services.ps1 -Full` では、各パラメーターの詳しい説明を参照できる。
 
 #### Start-Services.ps1 から実行する
 （Rancher Desktop導入時 ＋ DB 初期化完了待ちをする場合）
@@ -120,36 +120,36 @@ common_link 作成 → `docker compose up -d` / `down`だけを実行する。
 以下のコマンド（またはダブルクリック）でコンテナを起動する。引数なしは `up`。
 初回実行時の common_link ネットワーク作成も自動で行われる。
 ```
-> .\Start-Services.ps1
-> .\Start-Services.ps1 up
+> .\tools\Start-Services.ps1
+> .\tools\Start-Services.ps1 up
 ```
 
 以下のコマンドでコンテナが停止する。`Stop-Services.ps1`（`Start-Services.ps1 down` のショートカット）でも同じ。
 ```
-> .\Start-Services.ps1 down
-> .\Stop-Services.ps1
+> .\tools\Start-Services.ps1 down
+> .\tools\Stop-Services.ps1
 ```
 
 その他、稼働状況の確認やログ表示も可能。
 ```
-> .\Start-Services.ps1 ps
-> .\Start-Services.ps1 logs
+> .\tools\Start-Services.ps1 ps
+> .\tools\Start-Services.ps1 logs
 ```
 
 いずれのアクションも、後ろに[サービス名](#指定できるサービス名)を並べるとそのサービスだけが対象になる。
 アクション（`up` / `down` / `ps` / `logs`）を省略した場合は `up` とみなすため、サービス名だけを渡してもよい。
 ```
-> .\Start-Services.ps1 mysql redis      ← mysql と redis だけを起動（up 省略）
-> .\Start-Services.ps1 up mysql redis   ← 同上
-> .\Start-Services.ps1 down oracle      ← oracle だけを停止・削除
-> .\Stop-Services.ps1 mysql redis       ← mysql と redis だけを停止
-> .\Start-Services.ps1 logs mysql       ← mysql のログだけを表示
+> .\tools\Start-Services.ps1 mysql redis      ← mysql と redis だけを起動（up 省略）
+> .\tools\Start-Services.ps1 up mysql redis   ← 同上
+> .\tools\Start-Services.ps1 down oracle      ← oracle だけを停止・削除
+> .\tools\Stop-Services.ps1 mysql redis       ← mysql と redis だけを停止
+> .\tools\Start-Services.ps1 logs mysql       ← mysql のログだけを表示
 ```
 
 [ヘルプ](#ヘルプの表示)は `help` アクション（または `-Help`）で表示する。
 ```
-> .\Start-Services.ps1 help
-> .\Stop-Services.ps1 help
+> .\tools\Start-Services.ps1 help
+> .\tools\Stop-Services.ps1 help
 ```
 
 主なオプション:
@@ -161,14 +161,14 @@ common_link 作成 → `docker compose up -d` / `down`だけを実行する。
 - `-BufferPoolMB <MB>`: RDBMS（mysql / postgres / sqlserver）のバッファプールを指定する（128 以上。既定は mysql / postgres が 128、sqlserver が 300）。
   詳細は [CHEATSHEET.md](CHEATSHEET.md#db-のキャッシュバッファプール)。
 ```
-> .\Start-Services.ps1 up -NoWait
-> .\Start-Services.ps1 up -NoPause
-> .\Start-Services.ps1 mysql -BufferPoolMB 512
+> .\tools\Start-Services.ps1 up -NoWait
+> .\tools\Start-Services.ps1 up -NoPause
+> .\tools\Start-Services.ps1 mysql -BufferPoolMB 512
 ```
 
 PowerShell の実行ポリシーでブロックされる場合は、以下のように実行する。
 ```
-> powershell -ExecutionPolicy Bypass -File .\Start-Services.ps1
+> powershell -ExecutionPolicy Bypass -File .\tools\Start-Services.ps1
 ```
 
 #### Start-Services_wsl2.ps1
@@ -178,11 +178,11 @@ Rancher Desktop 導入以前の、**WSL2 内にインストールした Docker**
 基本的な使い方は `Start-Services.ps1` と同じ（`up` / `down` / `ps` / `logs`、[サービス名](#指定できるサービス名)の指定、
 `-NoWait` / `-NoPause`）で、加えて WSL ディストリビューションを `-Distro` で指定できる。
 ```
-> .\Start-Services_wsl2.ps1
-> .\Start-Services_wsl2.ps1 up -Distro Ubuntu-22.04
-> .\Start-Services_wsl2.ps1 mysql redis
-> .\Stop-Services_wsl2.ps1
-> .\Stop-Services_wsl2.ps1 mysql redis
+> .\tools\Start-Services_wsl2.ps1
+> .\tools\Start-Services_wsl2.ps1 up -Distro Ubuntu-22.04
+> .\tools\Start-Services_wsl2.ps1 mysql redis
+> .\tools\Stop-Services_wsl2.ps1
+> .\tools\Stop-Services_wsl2.ps1 mysql redis
 ```
 
 ただしキープアライブの扱いだけは対象範囲で変わる。`down` でサービス名を指定した場合は、
@@ -209,16 +209,16 @@ WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行�
 **サービス名を指定しなかった場合は、ヘルプ（指定できるサービス名の一覧）を表示して終了する。**
 `help` / `-Help` でも同じ（`Start-Services.ps1` 等と揃えてある）。
 ```
-> .\Reboot-Services.ps1
-> .\Reboot-Services.ps1 help
+> .\tools\Reboot-Services.ps1
+> .\tools\Reboot-Services.ps1 help
 ```
 
 指定できるサービス名は [Start-Services.ps1 等と共通](#指定できるサービス名)。スペース区切りで複数指定でき、
 大文字小文字は区別しない。`all` で全サービスを対象にする。
 ```
-> .\Reboot-Services.ps1 mysql
-> .\Reboot-Services.ps1 mysql redis
-> .\Reboot-Services.ps1 all
+> .\tools\Reboot-Services.ps1 mysql
+> .\tools\Reboot-Services.ps1 mysql redis
+> .\tools\Reboot-Services.ps1 all
 ```
 
 主なオプション:
@@ -229,8 +229,8 @@ WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行�
 - `-BufferPoolMB <MB>`: `Start-Services.ps1` と同じ。`restart` では反映されないため、指定すると `-Recreate` 相当になる。
 - `-Distro`: WSL2 版のみ。WSL ディストリビューションを指定する。
 ```
-> .\Reboot-Services.ps1 mysql -Recreate
-> .\Reboot-Services_wsl2.ps1 all -Distro Ubuntu-22.04
+> .\tools\Reboot-Services.ps1 mysql -Recreate
+> .\tools\Reboot-Services_wsl2.ps1 all -Distro Ubuntu-22.04
 ```
 
 補足:
@@ -249,9 +249,9 @@ WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行�
 `Show-Services.ps1` が Rancher Desktop 版、`Show-Services_wsl2.ps1` が WSL2 版。
 
 ```
-> .\Show-Services.ps1
-> .\Show-Services.ps1 mysql redis   ← 指定したサービスだけ
-> .\Show-Services.ps1 -Quick        ← 準備完了判定を省いて手早く
+> .\tools\Show-Services.ps1
+> .\tools\Show-Services.ps1 mysql redis   ← 指定したサービスだけ
+> .\tools\Show-Services.ps1 -Quick        ← 準備完了判定を省いて手早く
 ```
 
 ```
@@ -264,8 +264,8 @@ WSL2 版は、WSL2 特有の次の問題への対策をスクリプト側で行�
   postgres   -          NG     5432   NG
 
 利用できないサービス: mysql, postgres
-  起動するには: .\Start-Services.ps1 mysql postgres
-  作り直すには: .\Reboot-Services.ps1 mysql postgres -Recreate
+  起動するには: .\tools\Start-Services.ps1 mysql postgres
+  作り直すには: .\tools\Reboot-Services.ps1 mysql postgres -Recreate
 ```
 
 `Start-Services.ps1 ps`（＝`docker compose ps`）との違いは次のとおり。

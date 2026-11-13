@@ -108,9 +108,9 @@ if (-not $targets -or $targets.Count -eq 0) { $targets = @($ServicePorts.Keys) }
 $exitCode = 0
 
 try {
-    # docker-compose.yml のあるフォルダ（＝本スクリプトの場所）で実行する。
-    Push-Location -LiteralPath $PSScriptRoot
-    Write-Line "対象: $PSScriptRoot" -Color DarkGray
+    # docker-compose.yml のあるフォルダ（＝本スクリプトの親フォルダ）で実行する。
+    Push-Location -LiteralPath $ComposeDir
+    Write-Line "対象: $ComposeDir" -Color DarkGray
 
     # 状態表示なので、Wait-DockerDaemon のような待機はせず 1 回だけ確認する。
     # 注: try の中で return すると、下の exit $exitCode まで到達せず終了コードが

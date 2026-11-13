@@ -25,7 +25,7 @@
   ```
   uv は Python 本体の検出・取得も行うため、対応する Python が無くても uv が自動で用意する
   （システムの `python` が Microsoft Store のスタブでも問題ない）。
-- リポジトリ直下の `docker compose`（または `Start-Services.ps1`）でサービス群が起動していること。
+- リポジトリ直下の `docker compose`（または `tools\Start-Services.ps1`）でサービス群が起動していること。
 
 ## 使い方（Windows）
 このフォルダに移動し、

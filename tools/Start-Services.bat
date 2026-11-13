@@ -18,8 +18,8 @@ rem    Start-Services.bat logs     tail logs (Ctrl+C to quit)
 rem ===========================================================================
 setlocal
 
-rem Run from this batch file's folder (where docker-compose.yml lives).
-cd /d "%~dp0"
+rem Run from the repo root, the parent of tools (where docker-compose.yml lives).
+cd /d "%~dp0.."
 
 set "ACTION=%~1"
 if "%ACTION%"=="" set "ACTION=up"

@@ -141,9 +141,9 @@ if ($BufferPoolMB -gt 0 -and -not $Recreate) {
 $exitCode = 0
 
 try {
-    # docker-compose.yml のあるフォルダ（＝本スクリプトの場所）で実行する。
-    Push-Location -LiteralPath $PSScriptRoot
-    Write-Line "対象: $PSScriptRoot" -Color DarkGray
+    # docker-compose.yml のあるフォルダ（＝本スクリプトの親フォルダ）で実行する。
+    Push-Location -LiteralPath $ComposeDir
+    Write-Line "対象: $ComposeDir" -Color DarkGray
     Write-Line ("再起動するサービス: {0}" -f ($targets -join ', ')) -Color Cyan
 
     Wait-DockerDaemon

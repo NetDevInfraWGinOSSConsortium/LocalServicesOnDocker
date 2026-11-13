@@ -110,6 +110,10 @@ if (-not (Test-Path -LiteralPath $commonPath)) {
 }
 . $commonPath
 
+
+# docker-compose.yml のあるフォルダ（＝本スクリプトの親フォルダ）。
+# ドットソースされる Reboot / Show 系にも引き継がれる。
+$ComposeDir = Split-Path -Parent $PSScriptRoot
 # --- compose 実行（Services.Common.ps1 の Wait-Service / Ensure-Service が使う）--
 function Invoke-ComposeQuiet {
     # docker compose の後ろに付く引数を受け取り、出力を捨てて終了コードを返す。
@@ -220,9 +224,9 @@ $exitCode = 0
 if (-not $isAllServices) { $composeTargets = @($targets) }
 
 try {
-    # docker-compose.yml のあるフォルダ（＝本スクリプトの場所）で実行する。
-    Push-Location -LiteralPath $PSScriptRoot
-    Write-Line "対象: $PSScriptRoot" -Color DarkGray
+    # docker-compose.yml のあるフォルダ（＝本スクリプトの親フォルダ）で実行する。
+    Push-Location -LiteralPath $ComposeDir
+    Write-Line "対象: $ComposeDir" -Color DarkGray
     if (-not $isAllServices) {
         Write-Line ("対象サービス: {0}" -f ($targets -join ', ')) -Color Cyan
     }

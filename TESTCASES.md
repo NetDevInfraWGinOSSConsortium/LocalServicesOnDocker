@@ -100,7 +100,7 @@ WSL2 内の dockerd が必要。**Rancher Desktop 側を停止してから**実�
 
 | # | コマンド | 期待 |
 |---|---|---|
-| D01 | `Start-Services_wsl2.ps1 help -NoPause` | 専用の使い方（`.\Start-Services_wsl2.ps1 ...`） |
+| D01 | `Start-Services_wsl2.ps1 help -NoPause` | 専用の使い方（`.\tools\Start-Services_wsl2.ps1 ...`） |
 | D02 | `Start-Services_wsl2.ps1 ps -NoPause` | `WSL パス: /mnt/d/...` へ変換されている・一覧が出る |
 | D03 | `Start-Services_wsl2.ps1 bogus -NoPause` | exit 1 |
 | D04 | `Reboot-Services_wsl2.ps1 redis -NoPause` | キープアライブ起動 → ID 不変で再起動 → `localhost:6379` 到達 OK |
@@ -177,7 +177,7 @@ Northwind の作成がぶつかり、SQL Server が自らシャットダウン�
 | # | 内容 | 期待 |
 |---|---|---|
 | F01 | リポジトリ外のフォルダから `Start-Services.ps1` / `Reboot-Services.ps1` / `Stop-Services.bat` を実行 | すべて正常（`$PSScriptRoot` / `%~dp0`） |
-| F02 | `powershell -ExecutionPolicy Bypass -File .\Start-Services.ps1 ps` | exit 0（README 記載の回避策） |
+| F02 | `powershell -ExecutionPolicy Bypass -File .\tools\Start-Services.ps1 ps` | exit 0（README 記載の回避策） |
 | F03 | `-NoPause` **なし**＋標準入力リダイレクト | **ハングせず終了**し、`続行するには…` を出力しない |
 | F04 | `Services.Common.ps1` を直接実行 | exit 0・**出力 0 行**・副作用なし（ドットソース専用） |
 | F05 | `Services.Common.ps1` を退避して 8 本を実行 | **8 本すべて** exit 1・`共通部品が見つかりません: <パス>` |
@@ -227,8 +227,8 @@ Northwind の作成がぶつかり、SQL Server が自らシャットダウン�
 テスト後は次の状態に戻す。
 
 ```
-> .\Stop-Services_wsl2.ps1 -NoPause      ← WSL2 側を使った場合
-> .\Start-Services.ps1 -NoPause          ← Rancher Desktop 側を全サービス稼働へ
+> .\tools\Stop-Services_wsl2.ps1 -NoPause      ← WSL2 側を使った場合
+> .\tools\Start-Services.ps1 -NoPause          ← Rancher Desktop 側を全サービス稼働へ
 ```
 
 - WSL2 のキープアライブが残る場合がある（`up` が失敗したときなど）。

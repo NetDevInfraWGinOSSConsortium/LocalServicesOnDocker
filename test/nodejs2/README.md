@@ -17,7 +17,7 @@
 
 ## 前提
 - Node.js 18 以上。
-- リポジトリ直下の `docker compose`（または `Start-Services.ps1`）でサービス群が起動していること。
+- リポジトリ直下の `docker compose`（または `tools\Start-Services.ps1`）でサービス群が起動していること。
 
 ## 使い方（Windows）
 このフォルダに移動し、
